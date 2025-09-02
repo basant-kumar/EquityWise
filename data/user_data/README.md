@@ -4,10 +4,18 @@ This folder contains your personal financial documents and records.
 
 ## Current Files:
 
-### Trading Records:
-- `G&L_Expanded_2023.xlsx` - Gain & Loss statement for 2023
-- `G&L_Expanded_2024.xlsx` - Gain & Loss statement for 2024  
-- `G&L_Expanded_2025.xlsx` - Gain & Loss statement for 2025
+### E*Trade Transaction Records:
+- `BenefitHistory.xlsx` - RSU vesting transaction history
+- `G&L_Expanded_2023.xlsx` - Sale transaction records for 2023
+- `G&L_Expanded_2024.xlsx` - Sale transaction records for 2024  
+- `G&L_Expanded_2025.xlsx` - Sale transaction records for 2025
+
+**How to Download from E*Trade:**
+1. Login to **E*Trade**
+2. Navigate to **At Work** → **My Account**
+3. For **BenefitHistory**: **Benefit History** → **Download Expanded**
+4. For **G&L Statements**: **Gains & Losses** → **Download Expanded**
+5. Save files with exact names above
 
 ### RSU Documents:
 - `RSU_FY-22-23.pdf` - RSU vesting statement FY 2022-23
@@ -29,8 +37,8 @@ This folder contains your personal financial documents and records.
 
 ## Missing Files:
 
-If you have these files, please add them to this folder:
-- `BenefitHistory.xlsx` - E*Trade benefit history export
+If you need to add these files to this folder:
+- `BenefitHistory.xlsx` - Download from E*Trade using instructions above
 
 ## Privacy:
 

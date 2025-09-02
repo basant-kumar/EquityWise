@@ -173,8 +173,8 @@ data/
 ### 📥 **How to Get Data Files**
 
 1. **E*Trade Files**: 
-   - Login to E*Trade → My Account → Documents & Tax Forms
-   - Download "Benefit History" and "Gain & Loss" statements
+   - **BenefitHistory.xlsx**: Login to E*Trade → **At Work** → **My Account** → **Benefit History** → **Download Expanded**
+   - **G&L Statements**: Login to E*Trade → **At Work** → **My Account** → **Gains & Losses** → **Download Expanded**
 
 2. **RSU Vesting Statements**:
    - Login to **Excelity Portal**

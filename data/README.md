@@ -26,9 +26,18 @@ Historic and reference data that needs regular updates:
 Personal financial documents specific to your accounts:
 
 ### Required Files:
-- `BenefitHistory.xlsx` - E*Trade benefit history export
-- `G&L_Expanded_YYYY.xlsx` - Gain & Loss statements for each year (2023, 2024, 2025)
-- `RSU_FY-YY-YY.pdf` - RSU vesting statements (download from Excelity portal)
+
+**From E*Trade:**
+- `BenefitHistory.xlsx` - RSU vesting transaction history
+  - Login to **E*Trade** → **At Work** → **My Account** → **Benefit History** → **Download Expanded**
+- `G&L_Expanded_YYYY.xlsx` - Sale transaction records for each year (2023, 2024, 2025)
+  - Login to **E*Trade** → **At Work** → **My Account** → **Gains & Losses** → **Download Expanded**
+
+**From Excelity Portal:**
+- `RSU_FY-YY-YY.pdf` - RSU vesting statements 
+  - Login to **Excelity Portal** → **Payroll & Benefits** → **My Reports** → **Stock Perquisites Statement** → Select **Financial Year** → **Download as PDF**
+
+**From Bank:**
 - `BankStatement_FY*-*.xls` - Bank statements for reconciliation
 
 ### File Naming Convention:

@@ -20,9 +20,12 @@ By the end of this guide, you'll have:
 ## 📋 **Before You Start - Checklist**
 
 ### Required Files from E*Trade
-- [ ] **BenefitHistory.xlsx** - Download from E*Trade → My Account → Documents & Tax Forms → Benefit History
-- [ ] **Gain & Loss Statements** - Download for each relevant year (2023, 2024, 2025)
-  - File names: `G&L_Expanded_2023.xlsx`, `G&L_Expanded_2024.xlsx`, `G&L_Expanded_2025.xlsx`
+- [ ] **BenefitHistory.xlsx** - RSU vesting transaction history
+  - Login to **E*Trade** → **At Work** → **My Account** → **Benefit History** → **Download Expanded**
+  - Save as: `BenefitHistory.xlsx`
+- [ ] **Gain & Loss Statements** - Sale transaction records for each relevant year (2023, 2024, 2025)
+  - Login to **E*Trade** → **At Work** → **My Account** → **Gains & Losses** → **Download Expanded**  
+  - Save as: `G&L_Expanded_2023.xlsx`, `G&L_Expanded_2024.xlsx`, `G&L_Expanded_2025.xlsx`
 
 ### Required RSU Documents from Excelity
 - [ ] **RSU Vesting Statements** - Download from Excelity Portal
