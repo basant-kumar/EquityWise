@@ -6,7 +6,7 @@ from typing import Dict, Any
 from decimal import Decimal
 from pydantic import ValidationError
 
-from rsu_fa_tool.data.models import (
+from equitywise.data.models import (
     ESOPVestingRecord,
     GLStatementRecord, 
     SBIRateRecord,

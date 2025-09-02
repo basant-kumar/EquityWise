@@ -4,10 +4,10 @@ import pytest
 from datetime import date
 from typing import List
 
-from rsu_fa_tool.calculators.fa_calculator import (
+from equitywise.calculators.fa_calculator import (
     FACalculator, EquityHolding, FADeclarationSummary, FACalculationResults
 )
-from rsu_fa_tool.data.models import (
+from equitywise.data.models import (
     BenefitHistoryRecord, SBIRateRecord, AdobeStockRecord
 )
 

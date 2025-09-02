@@ -46,11 +46,11 @@ from rich.text import Text
 from rich.progress import Progress, TaskID, BarColumn, TextColumn, TimeRemainingColumn, SpinnerColumn
 import time
 
-from rsu_fa_tool.config.settings import settings
-from rsu_fa_tool.calculators.rsu_service import RSUService
-from rsu_fa_tool.calculators.fa_service import FAService
-from rsu_fa_tool.data.loaders import DataValidator
-from rsu_fa_tool.reports import ExcelReporter, CSVReporter
+from equitywise.config.settings import settings
+from equitywise.calculators.rsu_service import RSUService
+from equitywise.calculators.fa_service import FAService
+from equitywise.data.loaders import DataValidator
+from equitywise.reports import ExcelReporter, CSVReporter
 
 
 console = Console()

@@ -41,7 +41,7 @@ Place settings.toml in config/ directory:
     fallback_days_exchange_rate = 7
 
 Example Usage:
-    from rsu_fa_tool.config.settings import settings
+    from equitywise.config.settings import settings
     
     # Access configuration
     benefit_path = settings.benefit_history_path

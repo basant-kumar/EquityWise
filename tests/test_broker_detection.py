@@ -3,8 +3,8 @@
 Test broker transaction detection
 """
 
-from rsu_fa_tool.data.loaders import BankStatementLoader
-from rsu_fa_tool.config.settings import settings
+from equitywise.data.loaders import BankStatementLoader
+from equitywise.config.settings import settings
 from loguru import logger
 
 def test_broker_detection():

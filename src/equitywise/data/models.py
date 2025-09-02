@@ -50,7 +50,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 # Import ESOP models from our parser
-from rsu_fa_tool.data.esop_parser import ESOPVestingRecord
+from equitywise.data.esop_parser import ESOPVestingRecord
 
 
 class BenefitHistoryRecord(BaseModel):

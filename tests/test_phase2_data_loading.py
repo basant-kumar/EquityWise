@@ -4,21 +4,21 @@ import pytest
 from pathlib import Path
 from datetime import date
 
-from rsu_fa_tool.data.loaders import (
+from equitywise.data.loaders import (
     BenefitHistoryLoader, 
     GLStatementLoader, 
     SBIRatesLoader, 
     AdobeStockDataLoader,
     DataValidator
 )
-from rsu_fa_tool.data.models import (
+from equitywise.data.models import (
     BenefitHistoryRecord, 
     GLStatementRecord, 
     SBIRateRecord, 
     AdobeStockRecord
 )
-from rsu_fa_tool.data.validators import RSUDataValidator, DataQualityValidator
-from rsu_fa_tool.config.settings import settings
+from equitywise.data.validators import RSUDataValidator, DataQualityValidator
+from equitywise.config.settings import settings
 
 
 class TestDataLoaders:

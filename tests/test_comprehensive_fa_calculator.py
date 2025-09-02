@@ -5,13 +5,13 @@ from datetime import date
 from typing import List, Dict
 from unittest.mock import Mock, patch
 
-from rsu_fa_tool.calculators.fa_calculator import (
+from equitywise.calculators.fa_calculator import (
     FACalculator, EquityHolding, FADeclarationSummary, FACalculationResults, VestWiseDetails
 )
-from rsu_fa_tool.data.models import (
+from equitywise.data.models import (
     GLStatementRecord, SBIRateRecord, AdobeStockRecord
 )
-from rsu_fa_tool.data.esop_parser import ESOPVestingRecord
+from equitywise.data.esop_parser import ESOPVestingRecord
 
 
 @pytest.fixture

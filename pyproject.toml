@@ -53,7 +53,7 @@ Repository = "https://github.com/basant-kumar/EquityWise"
 Changelog = "https://github.com/basant-kumar/EquityWise/blob/main/CHANGELOG.md"
 
 [project.scripts]
-equitywise = "rsu_fa_tool.main:cli"
+equitywise = "equitywise.main:cli"
 
 [project.optional-dependencies]
 dev = [
@@ -80,7 +80,7 @@ exclude = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rsu_fa_tool"]
+packages = ["src/equitywise"]
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -130,7 +130,7 @@ addopts = [
 # Coverage reporting (when using pytest-cov)
 # Uncomment the following lines when running with coverage
 # addopts = [
-#     "--cov=src/rsu_fa_tool",
+#     "--cov=src/equitywise",
 #     "--cov-report=html",
 #     "--cov-report=term-missing",
 #     "--cov-fail-under=80"
@@ -154,7 +154,7 @@ log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 
 [tool.coverage.run]
 # Coverage configuration (when using pytest-cov)
-source = ["src/rsu_fa_tool"]
+source = ["src/equitywise"]
 omit = [
     "*/tests/*",
     "*/test_*",

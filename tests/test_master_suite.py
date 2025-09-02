@@ -15,13 +15,13 @@ from unittest.mock import patch
 # Note: These imports are for reference only, actual test execution is done via pytest
 
 # Import core modules for integration testing
-from rsu_fa_tool.main import cli
-from rsu_fa_tool.calculators.rsu_service import RSUService
-from rsu_fa_tool.calculators.fa_service import FAService
-from rsu_fa_tool.data.loaders import DataLoader, BankStatementLoader
-from rsu_fa_tool.config.settings import settings
-from rsu_fa_tool.utils.date_utils import get_financial_year_dates, get_calendar_year_dates
-from rsu_fa_tool.utils.currency_utils import format_currency
+from equitywise.main import cli
+from equitywise.calculators.rsu_service import RSUService
+from equitywise.calculators.fa_service import FAService
+from equitywise.data.loaders import DataLoader, BankStatementLoader
+from equitywise.config.settings import settings
+from equitywise.utils.date_utils import get_financial_year_dates, get_calendar_year_dates
+from equitywise.utils.currency_utils import format_currency
 
 
 class TestMasterSuite:
@@ -81,7 +81,7 @@ class TestMasterSuite:
     @pytest.mark.integration
     def test_rsu_service_integration(self):
         """Test RSU service integration with mock data."""
-        with patch('rsu_fa_tool.calculators.rsu_service.RSUService.load_all_data') as mock_load:  # Fixed: correct method name
+        with patch('equitywise.calculators.rsu_service.RSUService.load_all_data') as mock_load:  # Fixed: correct method name
             # Mock the data loading to avoid file dependencies
             mock_load.return_value = None
             
@@ -93,7 +93,7 @@ class TestMasterSuite:
     @pytest.mark.integration  
     def test_fa_service_integration(self):
         """Test FA service integration with mock data."""
-        with patch('rsu_fa_tool.calculators.fa_service.FAService.load_required_data') as mock_load:
+        with patch('equitywise.calculators.fa_service.FAService.load_required_data') as mock_load:
             # Mock the data loading to avoid file dependencies
             mock_load.return_value = None
             
@@ -105,9 +105,9 @@ class TestMasterSuite:
     @pytest.mark.slow
     def test_full_calculation_workflow_mock(self):
         """Test full calculation workflow with mocked data to avoid file dependencies."""
-        with patch('rsu_fa_tool.data.loaders.DataLoader.load_data') as mock_load_data:
-            with patch('rsu_fa_tool.calculators.rsu_service.RSUService.load_all_data'):  # Fixed: correct method name
-                with patch('rsu_fa_tool.calculators.fa_service.FAService.load_required_data'):
+        with patch('equitywise.data.loaders.DataLoader.load_data') as mock_load_data:
+            with patch('equitywise.calculators.rsu_service.RSUService.load_all_data'):  # Fixed: correct method name
+                with patch('equitywise.calculators.fa_service.FAService.load_required_data'):
                     # Mock successful data loading
                     mock_load_data.return_value = []
                     
@@ -122,8 +122,8 @@ class TestMasterSuite:
     def test_formula_consistency_cross_module(self):
         """Test that formulas are consistent across different modules."""
         # Test that financial year calculation is consistent
-        from rsu_fa_tool.calculators.rsu_calculator import RSUCalculator
-        from rsu_fa_tool.calculators.fa_calculator import FACalculator
+        from equitywise.calculators.rsu_calculator import RSUCalculator
+        from equitywise.calculators.fa_calculator import FACalculator
         
         # Mock data for testing
         mock_sbi_rates = []
@@ -153,8 +153,8 @@ class TestMasterSuite:
 
     def test_data_model_consistency(self):
         """Test that data models are consistent across modules."""
-        from rsu_fa_tool.data.models import GLStatementRecord, SBIRateRecord, AdobeStockRecord
-        from rsu_fa_tool.data.esop_parser import ESOPVestingRecord
+        from equitywise.data.models import GLStatementRecord, SBIRateRecord, AdobeStockRecord
+        from equitywise.data.esop_parser import ESOPVestingRecord
         
         # Test that all models have consistent date handling
         test_date = date(2024, 6, 15)
@@ -231,7 +231,7 @@ class TestMasterSuite:
         
         # Perform operations that should clean up properly
         for i in range(100):
-            from rsu_fa_tool.data.models import GLStatementRecord
+            from equitywise.data.models import GLStatementRecord
             record = GLStatementRecord(
                 record_type="Sell",
                 symbol="ADBE",
@@ -260,7 +260,7 @@ class TestMasterSuite:
             (date(2025, 4, 1), "FY25-26"),   # First day of FY25-26
         ]
         
-        from rsu_fa_tool.calculators.rsu_calculator import RSUCalculator
+        from equitywise.calculators.rsu_calculator import RSUCalculator
         calculator = RSUCalculator([], [])
         
         for test_date, expected_fy in fy_boundary_dates:
@@ -304,17 +304,17 @@ class TestMasterSuite:
         """Test that all modules can be imported consistently."""
         # Test that all main modules import without issues
         modules_to_test = [
-            'rsu_fa_tool.main',
-            'rsu_fa_tool.calculators.rsu_calculator',
-            'rsu_fa_tool.calculators.fa_calculator', 
-            'rsu_fa_tool.calculators.rsu_service',
-            'rsu_fa_tool.calculators.fa_service',
-            'rsu_fa_tool.data.models',
-            'rsu_fa_tool.data.loaders',
-            'rsu_fa_tool.data.esop_parser',
-            'rsu_fa_tool.utils.date_utils',
-            'rsu_fa_tool.utils.currency_utils',
-            'rsu_fa_tool.config.settings',
+            'equitywise.main',
+            'equitywise.calculators.rsu_calculator',
+            'equitywise.calculators.fa_calculator', 
+            'equitywise.calculators.rsu_service',
+            'equitywise.calculators.fa_service',
+            'equitywise.data.models',
+            'equitywise.data.loaders',
+            'equitywise.data.esop_parser',
+            'equitywise.utils.date_utils',
+            'equitywise.utils.currency_utils',
+            'equitywise.config.settings',
         ]
         
         for module_name in modules_to_test:
@@ -356,7 +356,7 @@ class TestMasterCLIIntegration:
     def test_validation_command_integration(self):
         """Test that validation command works."""
         # This tests the command structure, not file existence
-        with patch('rsu_fa_tool.main.validate_data') as mock_validate:
+        with patch('equitywise.main.validate_data') as mock_validate:
             mock_validate.return_value = None
             with patch('sys.argv', ['rsu-fa-tool', 'validate-data']):
                 try:

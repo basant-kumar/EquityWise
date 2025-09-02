@@ -3,8 +3,8 @@
 import pytest
 from datetime import date
 
-from rsu_fa_tool.utils.date_utils import get_financial_year_dates, get_calendar_year_dates
-from rsu_fa_tool.utils.currency_utils import format_currency, calculate_gain_loss
+from equitywise.utils.date_utils import get_financial_year_dates, get_calendar_year_dates
+from equitywise.utils.currency_utils import format_currency, calculate_gain_loss
 
 
 def test_financial_year_dates():

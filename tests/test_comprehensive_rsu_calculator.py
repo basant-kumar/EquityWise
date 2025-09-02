@@ -6,13 +6,13 @@ from typing import List
 from unittest.mock import Mock, patch
 from pydantic import ValidationError
 
-from rsu_fa_tool.calculators.rsu_calculator import (
+from equitywise.calculators.rsu_calculator import (
     RSUCalculator, VestingEvent, SaleEvent, RSUCalculationSummary
 )
-from rsu_fa_tool.data.models import (
+from equitywise.data.models import (
     GLStatementRecord, SBIRateRecord, AdobeStockRecord
 )
-from rsu_fa_tool.data.esop_parser import ESOPVestingRecord
+from equitywise.data.esop_parser import ESOPVestingRecord
 
 
 @pytest.fixture
