@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Changed
 - **Project Name**: Renamed from "RSU FA Tool" to "EquityWise" 
 - **CLI Command**: Changed from `rsu-fa-tool` to `equitywise`
-- **Description**: Enhanced to emphasize E*Trade data processing and broader equity support (RSU, ESOP, ESPP)
+- **Description**: Enhanced to emphasize E*Trade data processing and broader equity support (RSU, ESPP)
 - **Tagline**: "Smart equity tax calculations from E*Trade data"
 
 #### Added

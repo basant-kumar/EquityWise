@@ -2,7 +2,7 @@
 
 **Comprehensive Step-by-Step Guide for Equity Compensation Tax Calculations**
 
-This guide will walk you through every step of using EquityWise, from initial setup to generating professional tax reports for Indian compliance. EquityWise processes E*Trade data for RSU, ESOP, ESPP, and Foreign Assets calculations.
+This guide will walk you through every step of using EquityWise, from initial setup to generating professional tax reports for Indian compliance. EquityWise processes E*Trade data for RSU, ESPP, and Foreign Assets calculations.
 
 ---
 
@@ -22,17 +22,25 @@ By the end of this guide, you'll have:
 ### Required Files from E*Trade
 - [ ] **BenefitHistory.xlsx** - Download from E*Trade → My Account → Documents & Tax Forms → Benefit History
 - [ ] **Gain & Loss Statements** - Download for each relevant year (2023, 2024, 2025)
-  - File names: `GainLoss_2023.xlsx`, `GainLoss_2024.xlsx`, `GainLoss_2025.xlsx`
+  - File names: `G&L_Expanded_2023.xlsx`, `G&L_Expanded_2024.xlsx`, `G&L_Expanded_2025.xlsx`
+
+### Required RSU Documents from Excelity
+- [ ] **RSU Vesting Statements** - Download from Excelity Portal
+  - Login to **Excelity Portal**
+  - Navigate: **Payroll & Benefits** → **My Reports** → **Stock Perquisites Statement**
+  - Select **Financial Year** (FY22-23, FY23-24, FY24-25, etc.)
+  - **Download as PDF**
+  - Save as: `RSU_FY-XX-XX.pdf`
 
 ### Required Reference Data  
 - [ ] **Adobe Stock Price History** - Download from Yahoo Finance → ADBE → Historical Data
-  - Save as: `HistoricalData_1234567890.xlsx` (any numeric suffix)
+  - Save as: `HistoricalData_1234567890.csv` (any numeric suffix)
 - [ ] **SBI Exchange Rates** - Download SBI TTBR rates or use provided file
-  - Save as: `SBI_TTBR_Rates.xlsx`
+  - Save as: `Exchange_Reference_Rates.csv`
 
 ### Optional Files
 - [ ] **Bank Statement** - For reconciliation (if you want to track transfer expenses)
-  - Save as: `BankStatement.xlsx`
+  - Save as: `BankStatement_FY24-25.xls`
 
 ---
 
@@ -152,7 +160,7 @@ EquityWise/
 │   │   ├── BenefitHistory.xlsx
 │   │   ├── G&L_Expanded_2024.xlsx
 │   │   ├── G&L_Expanded_2025.xlsx
-│   │   ├── ESOP_FY-24-25.pdf
+│   │   ├── RSU_FY-24-25.pdf
 │   │   └── BankStatement_FY24-25.xls (optional)
 │   └── reference_data/          # Historic data (regularly updated)
 │       ├── Exchange_Reference_Rates.csv

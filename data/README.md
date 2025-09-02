@@ -28,12 +28,12 @@ Personal financial documents specific to your accounts:
 ### Required Files:
 - `BenefitHistory.xlsx` - E*Trade benefit history export
 - `G&L_Expanded_YYYY.xlsx` - Gain & Loss statements for each year (2023, 2024, 2025)
-- `ESOP_FY-YY-YY.pdf` - Employee Stock Option Plan vesting statements
+- `RSU_FY-YY-YY.pdf` - RSU vesting statements (download from Excelity portal)
 - `BankStatement_FY*-*.xls` - Bank statements for reconciliation
 
 ### File Naming Convention:
 - G&L statements: `G&L_Expanded_2024.xlsx`
-- ESOP documents: `ESOP_FY-24-25.pdf`
+- RSU documents: `RSU_FY-24-25.pdf`
 - Bank statements: `BankStatement_FY24-25.xls`
 
 ## 🔒 Privacy & Security

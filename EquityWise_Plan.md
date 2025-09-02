@@ -1,12 +1,12 @@
 # EquityWise - Smart Equity Tax Calculations - Project Plan
 
 ## Project Overview
-EquityWise is a comprehensive Python tool for calculating equity tax obligations and Foreign Assets declaration data for tax purposes. It processes E*Trade data for RSU, ESOP, ESPP calculations and Indian tax compliance.
+EquityWise is a comprehensive Python tool for calculating equity tax obligations and Foreign Assets declaration data for tax purposes. It processes E*Trade data for RSU, ESPP calculations and Indian tax compliance.
 
 ## Key Requirements
 - **RSU Calculation**: Compute gain/loss for Financial Year (FY)  
 - **Foreign Assets Declaration**: Compute FA data for Calendar Year (CY)
-- **Data Sources**: E*Trade BenefitHistory.xlsx, G&L statements, Adobe ESOP portal data
+- **Data Sources**: E*Trade BenefitHistory.xlsx, G&L statements, Excelity portal RSU data
 - **Reference Data**: SBI TTBR rates, Adobe stock historical data
 - **Package Manager**: Use `uv` for modern Python package management
 - **Output**: Modular reports (Excel/CSV) with both summary and detailed views

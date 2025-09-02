@@ -88,15 +88,15 @@ class Settings(BaseSettings):
         description="Path to Adobe stock historical data CSV file"
     )
     
-    # All ESOP PDF files for comprehensive vesting history
-    esop_pdf_paths: List[Path] = Field(
+    # All RSU PDF files for comprehensive vesting history
+    rsu_pdf_paths: List[Path] = Field(
         default=[
-            Path("data/user_data/ESOP_FY-22-23.pdf"),
-            Path("data/user_data/ESOP_FY-23-24.pdf"),
-            Path("data/user_data/ESOP_FY-24-25.pdf"),
-             Path("data/user_data/ESOP_FY-25-26.pdf")
+            Path("data/user_data/RSU_FY-22-23.pdf"),
+            Path("data/user_data/RSU_FY-23-24.pdf"),
+            Path("data/user_data/RSU_FY-24-25.pdf"),
+             Path("data/user_data/RSU_FY-25-26.pdf")
         ],
-        description="Paths to all Adobe ESOP PDF statement files for complete vesting history"
+        description="Paths to all RSU PDF statement files from Excelity portal for complete vesting history"
     )
     
     # Bank Statement files for transaction reconciliation
@@ -108,15 +108,15 @@ class Settings(BaseSettings):
         description="Paths to bank statement files for broker transaction reconciliation"
     )
     
-    # Legacy single path for backward compatibility (uses latest ESOP)
-    esop_pdf_path: Path = Field(
-        default=Path("data/user_data/ESOP_24-25.pdf"),
-        description="Path to latest Adobe ESOP PDF statement file (for RSU calculations)"
+    # Legacy single path for backward compatibility (uses latest RSU)
+    rsu_pdf_path: Path = Field(
+        default=Path("data/user_data/RSU_FY-24-25.pdf"),
+        description="Path to latest RSU PDF statement file from Excelity portal (for RSU calculations)"
     )
     
-    esop_fy23_24_pdf_path: Path = Field(
-        default=Path("data/user_data/ESOP_FY-23-24.pdf"),
-        description="Path to Adobe ESOP PDF statement file (FY23-24) - legacy compatibility"
+    rsu_fy23_24_pdf_path: Path = Field(
+        default=Path("data/user_data/RSU_FY-23-24.pdf"),
+        description="Path to RSU PDF statement file (FY23-24) from Excelity portal - legacy compatibility"
     )
     
     # Output settings

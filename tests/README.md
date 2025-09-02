@@ -146,7 +146,7 @@ When adding new tests:
 ## Mathematical Verification
 
 All financial calculations are verified against:
-- **ESOP PDF data** (actual vesting records)
+- **RSU PDF data** (actual vesting records from Excelity portal)
 - **G&L statement data** (actual sale records)  
 - **Bank statement data** (actual received amounts)
 - **SBI TTBR rates** (official exchange rates)

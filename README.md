@@ -1,12 +1,12 @@
 # 🎯 EquityWise
 
-**Smart equity tax calculations from E*Trade data - RSU, ESOP, ESPP & Foreign Assets for Indian compliance**
+**Smart equity tax calculations from E*Trade data - RSU, ESPP & Foreign Assets for Indian compliance**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests: 9/9 Passing](https://img.shields.io/badge/Tests-9%2F9%20Passing-brightgreen.svg)](tests/)
 
-EquityWise is a comprehensive tool for processing E*Trade data to calculate tax obligations for equity compensation (RSU, ESOP, ESPP) and Foreign Assets compliance under Indian tax law.
+EquityWise is a comprehensive tool for processing E*Trade data to calculate tax obligations for equity compensation (RSU, ESPP) and Foreign Assets compliance under Indian tax law.
 
 ## 🎯 **What This Tool Does**
 
@@ -163,7 +163,7 @@ data/
 │   ├── BenefitHistory.xlsx      # E*Trade RSU vesting history
 │   ├── G&L_Expanded_2024.xlsx   # E*Trade gain/loss statements
 │   ├── G&L_Expanded_2025.xlsx   # (if applicable)  
-│   ├── ESOP_FY-24-25.pdf        # ESOP vesting statements
+│   ├── RSU_FY-24-25.pdf         # RSU vesting statements
 │   └── BankStatement_FY24-25.xls # Bank transfer records (optional)
 └── reference_data/              # Historic data (regularly updated)
     ├── Exchange_Reference_Rates.csv  # SBI exchange rates
@@ -176,11 +176,17 @@ data/
    - Login to E*Trade → My Account → Documents & Tax Forms
    - Download "Benefit History" and "Gain & Loss" statements
 
-2. **Adobe Stock Data**: 
+2. **RSU Vesting Statements**:
+   - Login to **Excelity Portal**
+   - **Payroll & Benefits** → **My Reports** → **Stock Perquisites Statement**
+   - Select **Financial Year** → **Download as PDF**
+   - Save as: `RSU_FY-XX-XX.pdf`
+
+3. **Adobe Stock Data**: 
    - Yahoo Finance → ADBE → Historical Data → Download CSV
    - Convert to Excel format
 
-3. **SBI Exchange Rates**: 
+4. **SBI Exchange Rates**: 
    - SBI website → TTBR rates → Download historical data
    - Or use the tool's built-in rate fetching (future feature)
 
