@@ -177,13 +177,16 @@ Desktop.ini
 
 # Report output folder
 output/
-reports/
 
 # Data files (user should provide their own)
 data/*.xlsx
 data/*.xls
 data/*.csv
 data/*.pdf
+
+# Personal financial documents - NEVER commit these!
+data/user_data/
+!data/user_data/README.md
 
 # Log files
 *.log

@@ -18,21 +18,78 @@ EquityWise is a comprehensive tool for processing E*Trade data to calculate tax 
 
 ## 🚀 **Quick Start**
 
-### Installation
+### Prerequisites
+
+Before you start, ensure you have:
+- **Python 3.11 or higher** ([Download here](https://www.python.org/downloads/))
+- **Git** ([Download here](https://git-scm.com/downloads))
+
+### Step 1: Install UV (Recommended Package Manager)
+
+UV is a fast Python package manager. Choose your installation method:
+
+**macOS/Linux:**
+```bash
+# Install UV using the official installer
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# IMPORTANT: Restart your terminal or source your shell profile
+source ~/.zshrc  # for Zsh users
+# OR
+source ~/.bashrc  # for Bash users
+
+# Alternative: Load UV environment directly
+. "$HOME/.local/bin/env"
+```
+
+**Windows:**
+```powershell
+# Install UV using PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Alternative - Using pip:**
+```bash
+pip install uv
+```
+
+### Step 2: Verify Installation
 
 ```bash
-# Clone the repository
+# Check Python version (should be 3.11+)
+python --version
+
+# Check UV installation
+uv --version
+
+# Check Git installation
+git --version
+```
+
+### Step 3: Clone and Install EquityWise
+
+```bash
+# Clone the repository (replace with actual URL)
 git clone <repository-url>
 cd EquityWise
 
-# Install using UV (recommended)
+# Install using UV (recommended - faster and more reliable)
 uv sync
 
-# Or install using pip
+# Alternative: Install using pip if UV doesn't work
 pip install -e .
 ```
 
-### Basic Usage
+### Step 4: Verify Installation Works
+
+```bash
+# Test the installation
+uv run equitywise --help
+
+# You should see the help menu - if this works, you're ready!
+```
+
+### Step 5: Basic Usage
 
 ```bash
 # Interactive mode (recommended for first-time users)
@@ -48,18 +105,69 @@ uv run equitywise calculate-fa --calendar-year 2024 --output-format both
 uv run equitywise help-guide
 ```
 
+### 🚨 **Installation Troubleshooting**
+
+**Issue 1: "zsh: command not found: uv"**
+```bash
+# If UV is installed but not found, try these solutions:
+
+# Solution 1: Load UV environment
+. "$HOME/.local/bin/env"
+uv --version  # Should work now
+
+# Solution 2: Reload your shell profile
+source ~/.zshrc  # or ~/.bashrc
+uv --version  # Test again
+
+# Solution 3: Use full path to UV
+/Users/$(whoami)/.local/bin/uv --version
+
+# Solution 4: Install UV with pip instead
+pip install uv
+
+# Solution 5: Skip UV entirely, use pip
+pip install -e .
+
+# Then use: python -m equitywise instead of uv run equitywise
+
+# Example usage with pip:
+python -m equitywise --help
+python -m equitywise calculate-rsu --financial-year FY24-25
+```
+
+**Issue 2: "Python version too old"**
+```bash
+# Check your Python version
+python --version
+
+# If below 3.11, install newer Python from https://www.python.org/downloads/
+# Or use pyenv/conda to manage Python versions
+```
+
+**Issue 3: "Permission denied"**
+```bash
+# On macOS/Linux, try:
+sudo pip install uv
+
+# Or use --user flag:
+pip install --user uv
+```
+
 ## 📁 **Required Data Files**
 
 Place your E*Trade and bank files in the `data/` directory:
 
 ```
 data/
-├── BenefitHistory.xlsx          # E*Trade RSU vesting history
-├── GainLoss_2024.xlsx          # E*Trade gain/loss statements  
-├── GainLoss_2025.xlsx          # (if applicable)
-├── HistoricalData_*.xlsx       # Adobe stock price history
-├── SBI_TTBR_Rates.xlsx         # SBI exchange rates
-└── BankStatement.xlsx          # Bank transfer records (optional)
+├── user_data/                   # Personal financial documents
+│   ├── BenefitHistory.xlsx      # E*Trade RSU vesting history
+│   ├── G&L_Expanded_2024.xlsx   # E*Trade gain/loss statements
+│   ├── G&L_Expanded_2025.xlsx   # (if applicable)  
+│   ├── ESOP_FY-24-25.pdf        # ESOP vesting statements
+│   └── BankStatement_FY24-25.xls # Bank transfer records (optional)
+└── reference_data/              # Historic data (regularly updated)
+    ├── Exchange_Reference_Rates.csv  # SBI exchange rates
+    └── HistoricalData_*.csv     # Adobe stock price history
 ```
 
 ### 📥 **How to Get Data Files**
@@ -205,10 +313,10 @@ Create `config/settings.toml` for custom settings:
 
 ```toml
 [data_paths]
-benefit_history_path = "data/BenefitHistory.xlsx"
-gl_statements_paths = ["data/GainLoss_2024.xlsx", "data/GainLoss_2025.xlsx"]
-sbi_rates_path = "data/SBI_TTBR_Rates.xlsx"
-adobe_stock_path = "data/HistoricalData_*.xlsx"
+benefit_history_path = "data/user_data/BenefitHistory.xlsx"
+gl_statements_paths = ["data/user_data/G&L_Expanded_2024.xlsx", "data/user_data/G&L_Expanded_2025.xlsx"]
+sbi_rates_path = "data/reference_data/Exchange_Reference_Rates.csv"
+adobe_stock_path = "data/reference_data/HistoricalData_*.csv"
 
 [calculation_settings]
 fa_declaration_threshold_inr = 200000.0

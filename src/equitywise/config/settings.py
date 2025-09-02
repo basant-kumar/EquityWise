@@ -33,8 +33,8 @@ Environment Variable Overrides:
 Configuration File Support:
 Place settings.toml in config/ directory:
     [data_paths]
-    benefit_history_path = "data/BenefitHistory.xlsx"
-    sbi_rates_path = "data/SBI_TTBR_Rates.xlsx"
+    benefit_history_path = "data/user_data/BenefitHistory.xlsx"
+    sbi_rates_path = "data/reference_data/Exchange_Reference_Rates.csv"
     
     [calculation_settings]
     fa_declaration_threshold_inr = 200000.0
@@ -64,37 +64,37 @@ class Settings(BaseSettings):
     
     # Data file paths (can be overridden via environment variables or CLI)
     benefit_history_path: Path = Field(
-        default=Path("data/BenefitHistory.xlsx"),
+        default=Path("data/user_data/BenefitHistory.xlsx"),
         description="Path to E*Trade BenefitHistory.xlsx file"
     )
     
     # All G&L statement files for comprehensive sales history
     gl_statements_paths: list[Path] = Field(
         default_factory=lambda: [
-            Path("data/G&L_Expanded_2023.xlsx"),
-            Path("data/G&L_Expanded_2024.xlsx"),
-            Path("data/G&L_Expanded_2025.xlsx")
+            Path("data/user_data/G&L_Expanded_2023.xlsx"),
+            Path("data/user_data/G&L_Expanded_2024.xlsx"),
+            Path("data/user_data/G&L_Expanded_2025.xlsx")
         ],
         description="Paths to all G&L statement files for complete transaction history"
     )
     
     sbi_ttbr_rates_path: Path = Field(
-        default=Path("data/Reference Rates.csv"),
+        default=Path("data/reference_data/Exchange_Reference_Rates.csv"),
         description="Path to SBI TTBR rates CSV file"
     )
     
     adobe_stock_data_path: Path = Field(
-        default=Path("data/HistoricalData_1756011612969.csv"),
+        default=Path("data/reference_data/HistoricalData_1756011612969.csv"),
         description="Path to Adobe stock historical data CSV file"
     )
     
     # All ESOP PDF files for comprehensive vesting history
     esop_pdf_paths: List[Path] = Field(
         default=[
-            Path("data/ESOP_FY-22-23.pdf"),
-            Path("data/ESOP_FY-23-24.pdf"),
-            Path("data/ESOP_24-25.pdf"),
-             Path("data/ESOP_25-26.pdf")
+            Path("data/user_data/ESOP_FY-22-23.pdf"),
+            Path("data/user_data/ESOP_FY-23-24.pdf"),
+            Path("data/user_data/ESOP_FY-24-25.pdf"),
+             Path("data/user_data/ESOP_FY-25-26.pdf")
         ],
         description="Paths to all Adobe ESOP PDF statement files for complete vesting history"
     )
@@ -102,20 +102,20 @@ class Settings(BaseSettings):
     # Bank Statement files for transaction reconciliation
     bank_statement_paths: List[Path] = Field(
         default=[
-            Path("data/BankStatement_FY23-24.xls"),
-            Path("data/BankStatement_FY24-25.xls")
+            Path("data/user_data/BankStatement_FY23-24.xls"),
+            Path("data/user_data/BankStatement_FY24-25.xls")
         ],
         description="Paths to bank statement files for broker transaction reconciliation"
     )
     
     # Legacy single path for backward compatibility (uses latest ESOP)
     esop_pdf_path: Path = Field(
-        default=Path("data/ESOP_24-25.pdf"),
+        default=Path("data/user_data/ESOP_24-25.pdf"),
         description="Path to latest Adobe ESOP PDF statement file (for RSU calculations)"
     )
     
     esop_fy23_24_pdf_path: Path = Field(
-        default=Path("data/ESOP_FY-23-24.pdf"),
+        default=Path("data/user_data/ESOP_FY-23-24.pdf"),
         description="Path to Adobe ESOP PDF statement file (FY23-24) - legacy compatibility"
     )
     

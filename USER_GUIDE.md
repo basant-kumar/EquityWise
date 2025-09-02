@@ -38,40 +38,130 @@ By the end of this guide, you'll have:
 
 ## 🚀 **Step 1: Installation & Setup**
 
-### 1.1 Install the Tool
+### 1.1 Prerequisites
+
+Before you start, ensure you have:
+- **Python 3.11 or higher** ([Download here](https://www.python.org/downloads/))
+- **Git** ([Download here](https://git-scm.com/downloads))
+
+Check your versions:
+```bash
+# Verify Python version (must be 3.11+)
+python --version
+
+# Verify Git is installed
+git --version
+```
+
+### 1.2 Install UV Package Manager
+
+UV is a fast Python package manager. If you don't have it:
+
+**macOS/Linux:**
+```bash
+# Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# CRITICAL: Restart your terminal or reload your shell
+source ~/.zshrc  # for Zsh
+# OR  
+source ~/.bashrc  # for Bash
+
+# Alternative: Load UV environment directly
+. "$HOME/.local/bin/env"
+
+# Verify installation
+uv --version
+```
+
+**Windows:**
+```powershell
+# Install UV using PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Alternative - Using pip:**
+```bash
+pip install uv
+```
+
+### 1.3 Clone and Install EquityWise
 
 ```bash
 # Clone the repository (replace with actual URL)
 git clone <repository-url>
-cd RSU_FA_Tool
+cd EquityWise
 
 # Install using UV (recommended - faster and more reliable)
 uv sync
 
-# Alternative: Install using pip
+# Alternative: Install using pip if UV doesn't work
 pip install -e .
+
+# Test installation
+uv run equitywise --help
+# OR (if using pip):
+python -m equitywise --help
 ```
 
-### 1.2 Create Data Directory Structure
+### 1.4 Troubleshooting Installation
+
+**If you get "command not found: uv" (even after installing):**
+```bash
+# Most common issue: New shell session doesn't have UV path
+
+# Fix 1: Load UV environment manually
+. "$HOME/.local/bin/env"
+uv --version  # Should work now
+
+# Fix 2: Reload shell profile
+source ~/.zshrc  # or ~/.bashrc for Bash users
+uv --version  # Test again
+
+# Fix 3: Use full path if UV is installed
+/Users/$(whoami)/.local/bin/uv --version
+
+# Fix 4: Install UV with pip instead
+pip install uv
+
+# Fix 5: Skip UV entirely, use pip method
+pip install -e .
+
+# Then use python -m equitywise instead of uv run equitywise
+python -m equitywise --help
+python -m equitywise calculate-rsu --financial-year FY24-25
+```
+
+**If you get permission errors:**
+```bash
+# Use --user flag
+pip install --user uv
+pip install --user -e .
+```
+
+### 1.5 Create Data Directory Structure
 
 ```bash
 # Create data directory in the project root
 mkdir -p data
 
 # Your structure should look like:
-RSU_FA_Tool/
+EquityWise/
 ├── data/
-│   ├── BenefitHistory.xlsx
-│   ├── GainLoss_2024.xlsx
-│   ├── GainLoss_2025.xlsx
-│   ├── HistoricalData_1756011612969.xlsx
-│   ├── SBI_TTBR_Rates.xlsx
-│   └── BankStatement.xlsx (optional)
+│   ├── user_data/               # Personal financial documents
+│   │   ├── BenefitHistory.xlsx
+│   │   ├── G&L_Expanded_2024.xlsx
+│   │   ├── G&L_Expanded_2025.xlsx
+│   │   ├── ESOP_FY-24-25.pdf
+│   │   └── BankStatement_FY24-25.xls (optional)
+│   └── reference_data/          # Historic data (regularly updated)
+│       ├── Exchange_Reference_Rates.csv
+│       └── HistoricalData_*.csv
 ├── output/ (created automatically)
 └── ...
 ```
 
-### 1.3 Verify Installation
+### 1.6 Verify Installation
 
 ```bash
 # Test the tool is working
@@ -114,7 +204,7 @@ uv run equitywise validate-data --file-type gl-statements
 
 | Error | Solution |
 |-------|----------|
-| `FileNotFoundError: BenefitHistory.xlsx` | Ensure file is in `data/` directory with exact name |
+| `FileNotFoundError: BenefitHistory.xlsx` | Ensure file is in `data/user_data/` directory with exact name |
 | `ValidationError: Invalid date format` | Check Excel date columns are formatted as dates |
 | `No exchange rate data found` | Verify SBI_TTBR_Rates.xlsx has data for your date range |
 
@@ -324,15 +414,15 @@ Create `config/settings.toml`:
 
 ```toml
 [data_paths]
-benefit_history_path = "data/BenefitHistory.xlsx"
+benefit_history_path = "data/user_data/BenefitHistory.xlsx"
 gl_statements_paths = [
-    "data/GainLoss_2023.xlsx",
-    "data/GainLoss_2024.xlsx", 
-    "data/GainLoss_2025.xlsx"
+    "data/user_data/G&L_Expanded_2023.xlsx",
+    "data/user_data/G&L_Expanded_2024.xlsx", 
+    "data/user_data/G&L_Expanded_2025.xlsx"
 ]
-sbi_rates_path = "data/SBI_TTBR_Rates.xlsx"
-adobe_stock_path = "data/HistoricalData_*.xlsx"
-bank_statement_path = "data/BankStatement.xlsx"
+sbi_rates_path = "data/reference_data/Exchange_Reference_Rates.csv"
+adobe_stock_path = "data/reference_data/HistoricalData_*.csv"
+bank_statement_path = "data/user_data/BankStatement_FY24-25.xls"
 
 [calculation_settings]
 fa_declaration_threshold_inr = 200000.0
@@ -349,7 +439,7 @@ include_bank_reconciliation = true
 
 ```bash
 # Override file paths
-export RSU_BENEFIT_HISTORY_PATH="/custom/path/BenefitHistory.xlsx"
+export RSU_BENEFIT_HISTORY_PATH="/custom/path/user_data/BenefitHistory.xlsx"
 export RSU_OUTPUT_DIR="/custom/output/directory"
 export RSU_LOG_LEVEL="DEBUG"
 
