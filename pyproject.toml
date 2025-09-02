@@ -1,0 +1,213 @@
+[project]
+name = "equitywise"
+version = "1.1.0"
+description = "Smart equity tax calculations from E*Trade data - RSU, ESOP, ESPP & Foreign Assets for Indian compliance"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [
+    { name = "EquityWise Team", email = "support@equitywise.dev" }
+]
+maintainers = [
+    { name = "EquityWise Team", email = "support@equitywise.dev" }
+]
+keywords = [
+    "equitywise", "equity", "rsu", "esop", "espp", "tax", "foreign-assets", "india", 
+    "e-trade", "etrade", "capital-gains", "compliance", "finance", "calculator", "stock"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Accounting",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "click>=8.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "loguru>=0.7.0",
+    "python-dateutil>=2.8.0",
+    "requests>=2.31.0",
+    "rich>=13.0.0",
+    "pdfplumber>=0.7.0",
+    "tabula-py>=2.5.0",
+    "xlrd>=2.0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/basant-kumar/EquityWise"
+Documentation = "https://github.com/basant-kumar/EquityWise/blob/main/USER_GUIDE.md"
+Repository = "https://github.com/basant-kumar/EquityWise"
+"Bug Reports" = "https://github.com/basant-kumar/EquityWise/issues"
+Changelog = "https://github.com/basant-kumar/EquityWise/blob/main/CHANGELOG.md"
+
+[project.scripts]
+equitywise = "rsu_fa_tool.main:cli"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+exclude = [
+    "/.gitignore",
+    "/data/*",
+    "/output/*", 
+    "/htmlcov/*",
+    "/.coverage",
+    "*.log",
+    "/EquityWise_Plan.md",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rsu_fa_tool"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests", 
+    "/README.md",
+    "/USER_GUIDE.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/pyproject.toml",
+    "/uv.lock",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+]
+
+[tool.pytest.ini_options]
+# Test discovery and execution
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Test markers for categorization
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (slower, may require external resources)",
+    "slow: Slow tests that take significant time",
+    "performance: Performance and load tests", 
+    "e2e: End-to-end tests requiring full system",
+    "data_dependent: Tests that require actual data files",
+]
+
+# Output and reporting
+addopts = [
+    "-v",                          # Verbose output
+    "--tb=short",                  # Shorter traceback format
+    "--strict-markers",            # Require markers to be declared
+    "--strict-config",             # Require config to be valid
+    "--color=yes",                 # Colorized output
+    "--durations=10",              # Show 10 slowest tests
+]
+
+# Coverage reporting (when using pytest-cov)
+# Uncomment the following lines when running with coverage
+# addopts = [
+#     "--cov=src/rsu_fa_tool",
+#     "--cov-report=html",
+#     "--cov-report=term-missing",
+#     "--cov-fail-under=80"
+# ]
+
+# Test filtering
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning:pandas.*",
+    "ignore::FutureWarning:pandas.*",
+]
+
+# Logging during tests
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+# Test timeout (if pytest-timeout is installed)
+# timeout = 300  # 5 minutes max per test
+
+[tool.coverage.run]
+# Coverage configuration (when using pytest-cov)
+source = ["src/rsu_fa_tool"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/.*",
+]
+
+[tool.coverage.report]
+# Coverage reporting configuration
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.ruff]
+# Ruff linting configuration
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.mypy]
+# MyPy type checking configuration
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true

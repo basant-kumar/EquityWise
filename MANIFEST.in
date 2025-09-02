@@ -1,0 +1,44 @@
+# Include documentation and configuration files
+include README.md
+include USER_GUIDE.md
+include LICENSE
+include pyproject.toml
+include uv.lock
+
+# Include test suite for verification
+recursive-include tests *.py
+recursive-include tests *.md
+
+# Include configuration templates
+recursive-include config *.toml.example
+
+# Exclude development and output files
+exclude .gitignore
+exclude .python-version
+exclude *.log
+
+# Exclude coverage and build artifacts
+exclude .coverage
+recursive-exclude htmlcov *
+recursive-exclude __pycache__ *
+recursive-exclude * *.pyc
+recursive-exclude * *.pyo
+recursive-exclude * *.pyd
+
+# Exclude output directories (user-generated files)
+recursive-exclude output *
+recursive-exclude data *
+
+# Exclude IDE and system files
+recursive-exclude * .DS_Store
+recursive-exclude * Thumbs.db
+recursive-exclude * *.swp
+recursive-exclude * *.swo
+recursive-exclude * *~
+
+# Exclude development documentation
+exclude RSU_FA_Tool_Plan.md
+
+# Include package source
+recursive-include src/rsu_fa_tool *.py
+recursive-include src/rsu_fa_tool py.typed
