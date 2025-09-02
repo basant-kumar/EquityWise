@@ -13,7 +13,7 @@ from ..data.models import (
     GLStatementRecord, 
     SBIRateRecord, 
     AdobeStockRecord,
-    ESOPVestingRecord
+    RSUVestingRecord
 )
 from ..utils.date_utils import get_calendar_year_dates
 from ..utils.currency_utils import format_currency
@@ -101,23 +101,23 @@ class FADeclarationSummary(BaseModel):
     vested_holdings_inr: float = 0.0
     
     # Balance tracking for FA compliance (Key FA reporting requirements)
-    opening_balance_inr: float = Field(default=0.0, description="Opening balance as of Jan 1 (₹)")
+    opening_balance_inr: float = Field(default=0.0, description="Opening balance from initial vesting date (₹)")
     closing_balance_inr: float = Field(default=0.0, description="Closing balance as of Dec 31 (₹)")
     peak_balance_inr: float = Field(default=0.0, description="Peak balance during the year (₹)")
     peak_balance_date: Optional[Date] = Field(default=None, description="Date when peak balance occurred")
     
     # Exchange rates for different balance calculations
-    opening_exchange_rate: float = Field(default=0.0, description="Exchange rate on Jan 1")
+    opening_exchange_rate: float = Field(default=0.0, description="Exchange rate on initial vesting date")
     year_end_exchange_rate: float = Field(default=0.0, description="Exchange rate on Dec 31")
     peak_exchange_rate: float = Field(default=0.0, description="Exchange rate when peak occurred")
     
     # Stock prices for different balance calculations
-    opening_stock_price: float = Field(default=0.0, description="Stock price on Jan 1")
+    opening_stock_price: float = Field(default=0.0, description="Stock price on initial vesting date")
     year_end_stock_price: float = Field(default=0.0, description="Stock price on Dec 31")
     peak_stock_price: float = Field(default=0.0, description="Stock price when peak occurred")
     
     # Share counts for different balance calculations
-    opening_shares: float = Field(default=0.0, description="Share count on Jan 1")
+    opening_shares: float = Field(default=0.0, description="Share count on initial vesting date")
     closing_shares: float = Field(default=0.0, description="Share count on Dec 31")
     peak_shares: float = Field(default=0.0, description="Share count when peak occurred")
     
@@ -461,13 +461,13 @@ class FACalculator:
         logger.info(f"Processed {len(equity_holdings)} equity holdings")
         return equity_holdings
     
-    def process_esop_equity_holdings(
+    def process_rsu_equity_holdings(
         self,
-        esop_records: List[ESOPVestingRecord],
+        rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
         as_of_date: Optional[Date] = None
     ) -> List[EquityHolding]:
-        """Process equity holdings using ESOP PDF vesting data for accurate cost basis calculation."""
+        """Process equity holdings using RSU PDF vesting data for accurate cost basis calculation."""
         
         # =================================================================================
         # FOREIGN ASSETS (FA) EQUITY HOLDINGS CALCULATION FORMULAS
@@ -489,7 +489,7 @@ class FACalculator:
         # Purpose: Sum all vesting events for a specific grant number
         # Formula: Total_Vested = Σ(Vesting_Quantity) for same grant_number
         # Example: 2 shares (Jan) + 3 shares (Jul) = 5 total vested
-        # Source: ESOP PDF records grouped by grant number
+        # Source: RSU PDF records grouped by grant number
         #
         # FORMULA 3: Total Sold Shares per Grant
         # Purpose: Sum all sale events for a specific grant number
@@ -526,7 +526,7 @@ class FACalculator:
         
         calendar_year = self.calculate_calendar_year(as_of_date)
         
-        logger.info(f"Processing ESOP equity holdings as of {as_of_date} for calendar year {calendar_year}")
+        logger.info(f"Processing RSU equity holdings as of {as_of_date} for calendar year {calendar_year}")
         
         # Get date-specific rates for accurate valuation (Formula 6 inputs)
         year_end_exchange_rate = self.get_date_specific_exchange_rate(as_of_date)
@@ -541,7 +541,7 @@ class FACalculator:
             return []
         
         # Filter vesting records that occurred before or on the as_of_date
-        relevant_vestings = [r for r in esop_records if r.vesting_date <= as_of_date]
+        relevant_vestings = [r for r in rsu_records if r.vesting_date <= as_of_date]
         logger.info(f"Found {len(relevant_vestings)} vesting events before {as_of_date}")
         
         # APPLY FORMULA 3: Calculate total sold shares by grant
@@ -592,7 +592,7 @@ class FACalculator:
                     # Find the latest vesting record for additional metadata
                     latest_vesting = max(vesting_records, key=lambda x: x.vesting_date)
                     
-                    # Create equity holding with accurate cost basis from ESOP data
+                    # Create equity holding with accurate cost basis from RSU data
                     holding = EquityHolding(
                         holding_date=as_of_date,
                         quantity=current_holding,
@@ -604,7 +604,7 @@ class FACalculator:
                         market_value_inr_total=(year_end_stock_price * current_holding) * year_end_exchange_rate,
                         exchange_rate=year_end_exchange_rate,
                         holding_type="Vested",
-                        grant_date=None,  # Not available in ESOP records
+                        grant_date=None,  # Not available in RSU records
                         grant_number=grant_number,
                         vest_date=latest_vesting.vesting_date,
                         calendar_year=calendar_year
@@ -612,20 +612,20 @@ class FACalculator:
                     
                     equity_holdings.append(holding)
                     
-                    logger.debug(f"ESOP holding: {current_holding:.2f} shares of {grant_number}, "
+                    logger.debug(f"RSU holding: {current_holding:.2f} shares of {grant_number}, "
                                f"cost basis ${avg_cost_basis_per_share:.2f}/share, "
                                f"market value ₹{holding.market_value_inr_total:,.2f}")
                 
             except Exception as e:
-                logger.error(f"Error processing ESOP grant {grant_number}: {e}")
+                logger.error(f"Error processing RSU grant {grant_number}: {e}")
                 continue
         
-        logger.info(f"Processed {len(equity_holdings)} ESOP equity holdings with accurate cost basis")
+        logger.info(f"Processed {len(equity_holdings)} RSU equity holdings with accurate cost basis")
         return equity_holdings
     
     def calculate_year_balances(
         self,
-        esop_records: List[ESOPVestingRecord],
+        rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
         calendar_year: str
     ) -> Dict[str, Dict]:
@@ -636,16 +636,16 @@ class FACalculator:
         # =================================================================================
         #
         # Foreign Assets reporting requires three key balance types:
-        # 1. Opening Balance: Value at start of calendar year (Jan 1)
+        # 1. Opening Balance: Value from when foreign assets were first acquired (earliest vesting)
         # 2. Peak Balance: Highest value during the calendar year
         # 3. Closing Balance: Value at end of calendar year (Dec 31)
         #
         # FORMULA 1: Opening Balance Calculation
-        # Purpose: Calculate FA value at beginning of calendar year
-        # Date: January 1 of the calendar year
-        # Formula: Opening_Balance_INR = Holdings_Jan1 × Stock_Price_Jan1 × Exchange_Rate_Jan1
+        # Purpose: Calculate FA value from when foreign assets were first acquired
+        # Date: Earliest vesting date for shares held during the calendar year
+        # Formula: Opening_Balance_INR = Holdings_Initial × Stock_Price_Initial × Exchange_Rate_Initial
         # Example: 5 shares × $480 × ₹82.50 = ₹198,000
-        # Note: Uses actual holdings as of Jan 1 (considers prior year sales)
+        # Note: Uses actual holdings from initial vesting (more accurate than Jan 1st)
         #
         # FORMULA 2: Closing Balance Calculation
         # Purpose: Calculate FA value at end of calendar year
@@ -683,12 +683,15 @@ class FACalculator:
         # Tolerance: Small differences acceptable due to exchange rate timing differences
         # Formula: |Closing_CY2023 - Opening_CY2024| ÷ Opening_CY2024 < Threshold
         # Example: ₹130,260 (close) vs ₹130,800 (open) = 0.4% difference (acceptable)
+        # Note: Opening balance uses earliest vesting date, not Jan 1st
         # =================================================================================
         
         year = int(calendar_year)
         
         # APPLY FORMULA 1 & 2: Define key dates for opening and closing
-        opening_date = Date(year, 1, 1)
+        # Opening date is the earliest vesting date for shares held during the year
+        # This provides more accurate FA reporting than using arbitrary Jan 1st
+        opening_date = self.get_earliest_vesting_date_for_year(rsu_records, gl_records, calendar_year)
         closing_date = Date(year, 12, 31)
         
         # APPLY FORMULA 3: Generate monthly dates for peak balance calculation
@@ -712,7 +715,7 @@ class FACalculator:
             
             try:
                 # APPLY FORMULA 4: Calculate holdings as of this specific date
-                holdings = self.process_esop_equity_holdings(esop_records, gl_records, calc_date)
+                holdings = self.process_rsu_equity_holdings(rsu_records, gl_records, calc_date)
                 
                 # APPLY FORMULA 5: Calculate total values using date-specific rates
                 total_value_usd = sum(h.market_value_usd_total for h in holdings)
@@ -748,9 +751,62 @@ class FACalculator:
         
         return balance_calculations
     
+    def get_earliest_vesting_date_for_year(
+        self,
+        rsu_records: List[RSUVestingRecord],
+        gl_records: List[GLStatementRecord],
+        calendar_year: str
+    ) -> Date:
+        """Get the earliest vesting date for shares that would be held during the calendar year.
+        
+        This is important for FA reporting as the initial value should be calculated from when
+        the foreign assets were first acquired (vested), not from January 1st of the tax year.
+        
+        Args:
+            rsu_records: List of RSU vesting records
+            gl_records: List of G&L sale records  
+            calendar_year: Calendar year to calculate for
+            
+        Returns:
+            Earliest vesting date for shares held during the calendar year
+        """
+        year = int(calendar_year)
+        year_start = Date(year, 1, 1)
+        year_end = Date(year, 12, 31)
+        
+        # Find all vesting records for shares that would be held during the calendar year
+        # This includes shares vested before the year that weren't fully sold before the year
+        relevant_vest_dates = []
+        
+        for vest in rsu_records:
+            # Check if any shares from this vest would still be held during the calendar year
+            vest_key = f"{vest.grant_number}_{vest.vesting_date}"
+            
+            # Calculate how many shares from this vest were sold before the calendar year
+            shares_sold_before_year = sum(
+                record.quantity for record in gl_records
+                if (record.grant_number == vest.grant_number and 
+                    record.date_acquired == vest.vesting_date and
+                    record.date_sold and record.date_sold < year_start)
+            )
+            
+            # If some shares from this vest remain, include the vesting date
+            remaining_shares = vest.quantity - shares_sold_before_year
+            if remaining_shares > 0:
+                relevant_vest_dates.append(vest.vesting_date)
+        
+        if not relevant_vest_dates:
+            logger.warning(f"No relevant vesting dates found for {calendar_year}, using Jan 1st")
+            return year_start
+        
+        earliest_vest_date = min(relevant_vest_dates)
+        logger.info(f"Earliest vesting date for {calendar_year} holdings: {earliest_vest_date}")
+        
+        return earliest_vest_date
+    
     def calculate_share_statistics(
         self,
-        esop_records: List[ESOPVestingRecord],
+        rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
         calendar_year: str
     ) -> Dict[str, float]:
@@ -759,7 +815,7 @@ class FACalculator:
         year = int(calendar_year)
         
         # Calculate total shares vested ever (before and during CL year)
-        total_vested_ever = sum(r.quantity for r in esop_records)
+        total_vested_ever = sum(r.quantity for r in rsu_records)
         
         # Calculate total shares sold ever
         total_sold_ever = sum(r.quantity for r in gl_records if r.quantity)
@@ -774,7 +830,7 @@ class FACalculator:
         
         # Calculate shares vested before CL year
         vested_before_cl = sum(
-            r.quantity for r in esop_records 
+            r.quantity for r in rsu_records 
             if r.vesting_date < cl_start
         )
         
@@ -811,7 +867,7 @@ class FACalculator:
 
     def calculate_vest_wise_details(
         self,
-        esop_records: List[ESOPVestingRecord],
+        rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
         calendar_year: str
     ) -> List[VestWiseDetails]:
@@ -853,7 +909,7 @@ class FACalculator:
         # 2. Vests that had sales activity during the current calendar year
         try:
             relevant_vests = []
-            for vest in esop_records:
+            for vest in rsu_records:
                 if vest.vesting_date <= year_end:
                     vest_key = f"{vest.grant_number}_{vest.vesting_date}"
                     
@@ -877,7 +933,7 @@ class FACalculator:
                     else:
                         logger.debug(f"Excluding vest {vest.grant_number} ({vest.vesting_date}): fully sold by end of current year")
             
-            logger.debug(f"Found {len(relevant_vests)} relevant vests for {calendar_year} (filtered from {len([v for v in esop_records if v.vesting_date <= year_end])} total)")
+            logger.debug(f"Found {len(relevant_vests)} relevant vests for {calendar_year} (filtered from {len([v for v in rsu_records if v.vesting_date <= year_end])} total)")
         except Exception as e:
             logger.error(f"Error filtering vesting records: {e}")
             raise
@@ -1007,7 +1063,7 @@ class FACalculator:
         self, 
         calendar_year: str,
         equity_holdings: List[EquityHolding],
-        esop_records: List[ESOPVestingRecord] = None,
+        rsu_records: List[RSUVestingRecord] = None,
         gl_records: List[GLStatementRecord] = None
     ) -> FADeclarationSummary:
         """Calculate FA declaration summary with opening, closing, and peak balances."""
@@ -1021,11 +1077,11 @@ class FACalculator:
         )
         
         # Calculate comprehensive share statistics and balance analysis if data is available
-        if esop_records and gl_records:
+        if rsu_records and gl_records:
             logger.info(f"Calculating comprehensive balance analysis for {calendar_year}")
             
             # Calculate detailed share statistics
-            share_stats = self.calculate_share_statistics(esop_records, gl_records, calendar_year)
+            share_stats = self.calculate_share_statistics(rsu_records, gl_records, calendar_year)
             
             # Populate share statistics in summary
             summary.total_vested_shares = share_stats['current_holdings']  # Currently held
@@ -1034,7 +1090,7 @@ class FACalculator:
             summary.total_sold_ever = share_stats['total_sold_ever']
             
             # Calculate balance timelines
-            balance_calculations = self.calculate_year_balances(esop_records, gl_records, calendar_year)
+            balance_calculations = self.calculate_year_balances(rsu_records, gl_records, calendar_year)
             
             # Extract opening balance (Jan 1)
             opening_key = f"{calendar_year}-01-01"
@@ -1083,7 +1139,7 @@ class FACalculator:
             summary.peak_shares = peak_shares
             
             # Calculate vest-wise details for compliance reporting
-            summary.vest_wise_details = self.calculate_vest_wise_details(esop_records, gl_records, calendar_year)
+            summary.vest_wise_details = self.calculate_vest_wise_details(rsu_records, gl_records, calendar_year)
             
             logger.info(f"Balance Analysis Complete:")
             logger.info(f"  Opening (Jan 1): ₹{summary.opening_balance_inr:,.2f} ({share_stats['opening_shares']:.2f} shares)")

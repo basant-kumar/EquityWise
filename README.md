@@ -1,12 +1,12 @@
 # 🎯 EquityWise
 
-**Smart equity tax calculations from E*Trade data - RSU, ESPP & Foreign Assets for Indian compliance**
+**Smart equity tax calculations from E*Trade data - RSU & Foreign Assets for Indian compliance**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests: 9/9 Passing](https://img.shields.io/badge/Tests-9%2F9%20Passing-brightgreen.svg)](tests/)
 
-EquityWise is a comprehensive tool for processing E*Trade data to calculate tax obligations for equity compensation (RSU, ESPP) and Foreign Assets compliance under Indian tax law.
+EquityWise is a comprehensive tool for processing E*Trade and Excelity data to calculate tax obligations for RSU equity compensation and Foreign Assets compliance under Indian tax law.
 
 ## 🎯 **What This Tool Does**
 
@@ -155,40 +155,71 @@ pip install --user uv
 
 ## 📁 **Required Data Files**
 
-Place your E*Trade and bank files in the `data/` directory:
+EquityWise uses an organized folder structure to separate your private financial data from public market data:
 
 ```
 data/
-├── user_data/                   # Personal financial documents
-│   ├── BenefitHistory.xlsx      # E*Trade RSU vesting history
-│   ├── G&L_Expanded_2024.xlsx   # E*Trade gain/loss statements
-│   ├── G&L_Expanded_2025.xlsx   # (if applicable)  
-│   ├── RSU_FY-24-25.pdf         # RSU vesting statements
-│   └── BankStatement_FY24-25.xls # Bank transfer records (optional)
-└── reference_data/              # Historic data (regularly updated)
-    ├── Exchange_Reference_Rates.csv  # SBI exchange rates
-    └── HistoricalData_*.csv     # Adobe stock price history
+├── user_data/                          # 🔒 Personal financial data (NEVER commit to Git)
+│   ├── benefit_history/
+│   │   └── BenefitHistory.xlsx         # E*Trade comprehensive transaction history
+│   ├── gl_statements/
+│   │   ├── G&L_Expanded_2023.xlsx      # Annual gain/loss statements
+│   │   ├── G&L_Expanded_2024.xlsx      # (one file per calendar year)
+│   │   └── G&L_Expanded_2025.xlsx      # 
+│   ├── rsu_documents/
+│   │   ├── RSU_FY-22-23.pdf            # RSU vesting statements from Excelity
+│   │   ├── RSU_FY-23-24.pdf            # (one file per financial year)
+│   │   ├── RSU_FY-24-25.pdf            # 
+│   │   └── RSU_FY-25-26.pdf            # 
+│   └── bank_statements/
+│       ├── BankStatement_FY23-24.xls   # Bank transfer records (optional)
+│       └── BankStatement_FY24-25.xls   # 
+└── reference_data/                     # 🌍 Public market data (safe to version control)
+    ├── exchange_rates/
+    │   └── Exchange_Reference_Rates.csv # SBI TTBR exchange rates
+    └── adobe_stock/
+        └── HistoricalData_*.csv        # Adobe stock price history
 ```
+
+### 🔒 **Security & Privacy**
+- **`user_data/`**: Contains your sensitive financial information - automatically ignored by Git
+- **`reference_data/`**: Contains publicly available market data - safe to version control
+
+### ✨ **Benefits of Organized Structure**
+- **📂 Type-based organization**: Find files by their purpose (E*Trade, Excelity, Bank, etc.)
+- **🔒 Enhanced privacy**: Clear separation between sensitive and public data
+- **📈 Scalable**: Easily add more years of data without clutter
+- **🧭 Intuitive navigation**: Logical folder names make it easy to locate files
+- **📖 Self-documenting**: Each subfolder has README with specific instructions
 
 ### 📥 **How to Get Data Files**
 
-1. **E*Trade Files**: 
-   - **BenefitHistory.xlsx**: Login to E*Trade → **At Work** → **My Account** → **Benefit History** → **Download Expanded**
-   - **G&L Statements**: Login to E*Trade → **At Work** → **My Account** → **Gains & Losses** → **Download Expanded**
+#### 🏛️ **E*Trade Files** → `data/user_data/`
+- **BenefitHistory.xlsx**: 
+  - Login to **E*Trade → At Work → My Account → Benefit History → Download Expanded**
+  - Save in: `data/user_data/benefit_history/BenefitHistory.xlsx`
 
-2. **RSU Vesting Statements**:
-   - Login to **Excelity Portal**
-   - **Payroll & Benefits** → **My Reports** → **Stock Perquisites Statement**
-   - Select **Financial Year** → **Download as PDF**
-   - Save as: `RSU_FY-XX-XX.pdf`
+- **G&L Statements** (one per calendar year):
+  - Login to **E*Trade → At Work → My Account → Gains & Losses → Download Expanded**
+  - Save in: `data/user_data/gl_statements/G&L_Expanded_YYYY.xlsx`
 
-3. **Adobe Stock Data**: 
-   - Yahoo Finance → ADBE → Historical Data → Download CSV
-   - Convert to Excel format
+#### 📄 **RSU Vesting Statements** → `data/user_data/rsu_documents/`
+- Login to **Excelity Portal (Adobe Benefits)**
+- Navigate: **Payroll & Benefits → My Reports → Stock Perquisites Statement**
+- **Select Financial Year → Download as PDF**
+- Save as: `data/user_data/rsu_documents/RSU_FY-XX-XX.pdf`
 
-4. **SBI Exchange Rates**: 
-   - SBI website → TTBR rates → Download historical data
-   - Or use the tool's built-in rate fetching (future feature)
+#### 🏦 **Bank Statements** → `data/user_data/bank_statements/` (Optional)
+- Export bank statements covering RSU sale periods
+- Save as: `data/user_data/bank_statements/BankStatement_FYXX-XX.xls`
+
+#### 📈 **Adobe Stock Data** → `data/reference_data/adobe_stock/`
+- **Yahoo Finance**: Search "ADBE" → Historical Data → Download CSV
+- Save as: `data/reference_data/adobe_stock/HistoricalData_YYYYMMDD.csv`
+
+#### 💱 **Exchange Rates** → `data/reference_data/exchange_rates/`
+- **SBI TTBR Rates**: Download USD-INR historical rates
+- Save as: `data/reference_data/exchange_rates/Exchange_Reference_Rates.csv`
 
 ## 💡 **Usage Examples**
 
@@ -319,10 +350,20 @@ Create `config/settings.toml` for custom settings:
 
 ```toml
 [data_paths]
-benefit_history_path = "data/user_data/BenefitHistory.xlsx"
-gl_statements_paths = ["data/user_data/G&L_Expanded_2024.xlsx", "data/user_data/G&L_Expanded_2025.xlsx"]
-sbi_rates_path = "data/reference_data/Exchange_Reference_Rates.csv"
-adobe_stock_path = "data/reference_data/HistoricalData_*.csv"
+benefit_history_path = "data/user_data/benefit_history/BenefitHistory.xlsx"
+gl_statements_paths = [
+    "data/user_data/gl_statements/G&L_Expanded_2023.xlsx", 
+    "data/user_data/gl_statements/G&L_Expanded_2024.xlsx", 
+    "data/user_data/gl_statements/G&L_Expanded_2025.xlsx"
+]
+sbi_rates_path = "data/reference_data/exchange_rates/Exchange_Reference_Rates.csv"
+adobe_stock_path = "data/reference_data/adobe_stock/HistoricalData_*.csv"
+rsu_pdf_paths = [
+    "data/user_data/rsu_documents/RSU_FY-22-23.pdf",
+    "data/user_data/rsu_documents/RSU_FY-23-24.pdf", 
+    "data/user_data/rsu_documents/RSU_FY-24-25.pdf",
+    "data/user_data/rsu_documents/RSU_FY-25-26.pdf"
+]
 
 [calculation_settings]
 fa_declaration_threshold_inr = 200000.0
@@ -362,8 +403,9 @@ uv run equitywise --log-level DEBUG validate-data
 **Q: "FileNotFoundError: BenefitHistory.xlsx not found"**
 ```bash
 # Check data directory structure
-ls -la data/
-# Ensure file has correct name (case-sensitive)
+ls -la data/user_data/benefit_history/
+# Ensure file has correct name and location (case-sensitive)
+# Should be: data/user_data/benefit_history/BenefitHistory.xlsx
 ```
 
 **Q: "ValidationError: Invalid date format"**
@@ -377,7 +419,7 @@ uv run equitywise --log-level DEBUG validate-data
 ```bash
 # The tool uses 7-day fallback window
 # Ensure SBI rates file covers the required date range
-# Check SBI_TTBR_Rates.xlsx for data completeness
+# Check data/reference_data/exchange_rates/Exchange_Reference_Rates.csv for data completeness
 ```
 
 ### Performance Tips

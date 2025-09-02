@@ -11,10 +11,10 @@ from pydantic import BaseModel
 
 from .rsu_calculator import RSUCalculator, VestingEvent, SaleEvent, RSUCalculationSummary
 from ..data.loaders import (
-    GLStatementLoader, SBIRatesLoader, AdobeStockDataLoader, ESOPLoader
+    GLStatementLoader, SBIRatesLoader, AdobeStockDataLoader, RSULoader
 )
 from ..data.models import (
-    GLStatementRecord, SBIRateRecord, AdobeStockRecord, ESOPVestingRecord
+    GLStatementRecord, SBIRateRecord, AdobeStockRecord, RSUVestingRecord
 )
 from ..config.settings import Settings
 
@@ -60,7 +60,7 @@ class RSUService:
         self.console = Console()
         
     def load_all_data(self) -> Tuple[
-        List[ESOPVestingRecord], 
+        List[RSUVestingRecord], 
         List[GLStatementRecord], 
         List[SBIRateRecord], 
         List[AdobeStockRecord]
@@ -71,30 +71,30 @@ class RSUService:
         
         with Progress() as progress:
             # Create progress tasks
-            task1 = progress.add_task("Loading ESOP Vesting Data...", total=1)
+            task1 = progress.add_task("Loading RSU Vesting Data...", total=1)
             task2 = progress.add_task("Loading G&L Statements...", total=1) 
             task3 = progress.add_task("Loading SBI Rates...", total=1)
             task4 = progress.add_task("Loading Stock Data...", total=1)
             
-            # Load ESOP vesting data from ALL ESOP PDFs for comprehensive history
-            all_esop_records = []
+            # Load RSU vesting data from ALL RSU PDFs for comprehensive history
+            all_rsu_records = []
             
-            # Load from all configured ESOP PDF paths
-            for esop_path in self.settings.esop_pdf_paths:
-                if esop_path.exists():
+            # Load from all configured RSU PDF paths
+            for rsu_path in self.settings.rsu_pdf_paths:
+                if rsu_path.exists():
                     try:
-                        esop_loader = ESOPLoader(esop_path)
-                        esop_file_records = esop_loader.get_validated_records(str(esop_path))
-                        all_esop_records.extend(esop_file_records)
-                        logger.info(f"Loaded {len(esop_file_records)} ESOP vesting records from {esop_path.name}")
+                        rsu_loader = RSULoader(rsu_path)
+                        rsu_file_records = rsu_loader.get_validated_records(str(rsu_path))
+                        all_rsu_records.extend(rsu_file_records)
+                        logger.info(f"Loaded {len(rsu_file_records)} RSU vesting records from {rsu_path.name}")
                     except Exception as e:
-                        logger.error(f"Failed to load ESOP data from {esop_path}: {e}")
+                        logger.error(f"Failed to load RSU data from {rsu_path}: {e}")
                 else:
-                    logger.warning(f"ESOP PDF not found: {esop_path}")
+                    logger.warning(f"RSU PDF not found: {rsu_path}")
             
-            esop_records = all_esop_records
+            rsu_records = all_rsu_records
             progress.update(task1, advance=1)
-            logger.info(f"Total ESOP vesting records loaded from {len(self.settings.esop_pdf_paths)} PDFs: {len(esop_records)}")
+            logger.info(f"Total RSU vesting records loaded from {len(self.settings.rsu_pdf_paths)} PDFs: {len(rsu_records)}")
             
             # Load G&L Statements
             gl_records = []
@@ -119,7 +119,7 @@ class RSUService:
             progress.update(task4, advance=1)
             logger.info(f"Loaded {len(stock_records)} Adobe stock price records")
         
-        return esop_records, gl_records, sbi_records, stock_records
+        return rsu_records, gl_records, sbi_records, stock_records
     
     def calculate_rsu_for_fy(
         self, 
@@ -140,7 +140,7 @@ class RSUService:
         logger.info(f"Starting RSU calculations for {financial_year or 'all financial years'}")
         
         # Load all data
-        esop_records, gl_records, sbi_records, stock_records = self.load_all_data()
+        rsu_records, gl_records, sbi_records, stock_records = self.load_all_data()
         
         # Initialize calculator
         calculator = RSUCalculator(sbi_records, stock_records)
@@ -148,7 +148,7 @@ class RSUService:
         # Process events
         self.console.print("🔄 Processing RSU transactions...")
         
-        vesting_events = calculator.process_esop_vesting_events(esop_records)
+        vesting_events = calculator.process_rsu_vesting_events(rsu_records)
         sale_events = calculator.process_sale_events(gl_records)
         
         logger.info(f"Processed {len(vesting_events)} vesting events and {len(sale_events)} sale events")
@@ -239,7 +239,7 @@ class RSUService:
         results = RSUCalculationResults(
             calculation_date=Date.today(),
             financial_year=financial_year or f"All ({min(financial_years)}-{max(financial_years)})",
-            benefit_history_records=len(esop_records),
+            benefit_history_records=len(rsu_records),
             gl_statement_records=len(gl_records),
             sbi_rate_records=len(sbi_records),
             stock_data_records=len(stock_records),
@@ -264,7 +264,7 @@ class RSUService:
         return results
     
     def validate_data_quality(self) -> Dict[str, Any]:
-        """Validate data quality for ESOP-based RSU calculations."""
+        """Validate data quality for RSU calculations."""
         
         logger.info("Validating data quality for RSU calculations")
         
@@ -275,28 +275,28 @@ class RSUService:
             'summary': {}
         }
         
-        # Validate ESOP vesting data from ALL ESOP PDFs
-        all_esop_records = []
+        # Validate RSU vesting data from ALL RSU PDFs
+        all_rsu_records = []
         
-        for esop_path in self.settings.esop_pdf_paths:
+        for rsu_path in self.settings.rsu_pdf_paths:
             try:
-                if esop_path.exists():
-                    esop_loader = ESOPLoader(esop_path)
-                    esop_file_records = esop_loader.get_validated_records(str(esop_path))
-                    all_esop_records.extend(esop_file_records)
-                    logger.info(f"✓ ESOP data validation successful for {esop_path.name}: {len(esop_file_records)} records")
+                if rsu_path.exists():
+                    rsu_loader = RSULoader(rsu_path)
+                    rsu_file_records = rsu_loader.get_validated_records(str(rsu_path))
+                    all_rsu_records.extend(rsu_file_records)
+                    logger.info(f"✓ RSU data validation successful for {rsu_path.name}: {len(rsu_file_records)} records")
                 else:
-                    logger.warning(f"ESOP PDF not found for validation: {esop_path}")
+                    logger.warning(f"RSU PDF not found for validation: {rsu_path}")
                     
             except Exception as e:
                 validation_results['success'] = False
-                validation_results['errors'].append(f"ESOP Data ({esop_path.name}): {e}")
-                logger.error(f"✗ ESOP data validation failed for {esop_path.name}: {e}")
+                validation_results['errors'].append(f"RSU Data ({rsu_path.name}): {e}")
+                logger.error(f"✗ RSU data validation failed for {rsu_path.name}: {e}")
         
-        # Store combined ESOP records
-        validation_results['data']['esop_vesting'] = all_esop_records
-        validation_results['summary']['esop_vesting'] = len(all_esop_records)
-        logger.info(f"✓ Total ESOP vesting data validation from {len(self.settings.esop_pdf_paths)} PDFs: {len(all_esop_records)} records")
+        # Store combined RSU records
+        validation_results['data']['rsu_vesting'] = all_rsu_records
+        validation_results['summary']['rsu_vesting'] = len(all_rsu_records)
+        logger.info(f"✓ Total RSU vesting data validation from {len(self.settings.rsu_pdf_paths)} PDFs: {len(all_rsu_records)} records")
         
         try:
             # Validate G&L Statements

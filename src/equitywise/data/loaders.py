@@ -13,10 +13,10 @@ from .models import (
     GLStatementRecord, 
     SBIRateRecord, 
     AdobeStockRecord,
-    ESOPVestingRecord,
+    RSUVestingRecord,
     BankStatementRecord
 )
-from .esop_parser import ESOPParser
+from .rsu_parser import RSUParser
 
 
 class DataLoader:
@@ -561,25 +561,25 @@ class DataValidator:
         return validation_results
 
 
-class ESOPLoader(DataLoader):
-    """Loader for ESOP PDF vesting data."""
+class RSULoader(DataLoader):
+    """Loader for RSU PDF vesting data."""
     
     def _load_file(self, file_path: Path) -> pd.DataFrame:
-        """Load ESOP PDF file and extract vesting data."""
-        parser = ESOPParser(str(file_path))
+        """Load RSU PDF file and extract vesting data."""
+        parser = RSUParser(str(file_path))
         df = parser.to_dataframe()
-        logger.info(f"ESOP PDF file has {len(df)} vesting records")
+        logger.info(f"RSU PDF file has {len(df)} vesting records")
         return df
     
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean ESOP vesting data."""
-        # Data is already cleaned by the ESOP parser
-        logger.info(f"ESOP vesting data: {len(df)} records")
+        """Clean RSU vesting data."""
+        # Data is already cleaned by the RSU parser
+        logger.info(f"RSU vesting data: {len(df)} records")
         return df
     
-    def get_validated_records(self, file_path: str) -> List[ESOPVestingRecord]:
-        """Load and validate ESOP vesting records."""
-        parser = ESOPParser(file_path)
+    def get_validated_records(self, file_path: str) -> List[RSUVestingRecord]:
+        """Load and validate RSU vesting records."""
+        parser = RSUParser(file_path)
         records = parser.extract_vesting_data()
         
         validation_errors = []
@@ -587,16 +587,16 @@ class ESOPLoader(DataLoader):
         
         for i, record in enumerate(records):
             try:
-                validated_records.append(record)  # Already validated by ESOPParser
+                validated_records.append(record)  # Already validated by RSUParser
             except ValidationError as e:
                 validation_errors.append(f"Row {i}: {e}")
         
         if validation_errors:
-            logger.warning(f"ESOP validation errors: {len(validation_errors)}")
+            logger.warning(f"RSU validation errors: {len(validation_errors)}")
             for error in validation_errors[:5]:  # Show first 5 errors
                 logger.warning(f"  {error}")
                 
-        logger.info(f"Validated {len(validated_records)} ESOP vesting records, {len(validation_errors)} errors")
+        logger.info(f"Validated {len(validated_records)} RSU vesting records, {len(validation_errors)} errors")
         return validated_records
 
 

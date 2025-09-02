@@ -530,7 +530,7 @@ def calculate_fa(
                         excel_file = excel_reporter.generate_fa_report(
                             summary=summary,
                             equity_holdings=results.equity_holdings,
-                            vest_wise_details=getattr(results, 'vest_wise_details', []),
+                            vest_wise_details=summary.vest_wise_details,
                             calendar_year=str(calendar_year),
                             detailed=detailed
                         )
@@ -637,19 +637,24 @@ def _display_single_year_results(results, detailed: bool, console) -> None:
         console.print(f"   Sold in CL{results.calendar_year}: [red]{summary.total_sold_in_cl:,.0f}[/red]")
         console.print(f"   Total Sold (Ever): [dim red]{summary.total_sold_ever:,.0f}[/dim red]")
         
-        # Create single-year comprehensive balance summary table
-        balance_table = Table(title=f"📊 Foreign Assets Balance Summary - CL{results.calendar_year}", 
-                            show_header=True, header_style="bold magenta")
-        balance_table.add_column("Balance Type", style="cyan", width=12)
-        balance_table.add_column("Amount (₹)", style="white", justify="right", width=14)
-        balance_table.add_column("Shares", style="purple", justify="right", width=8)
-        balance_table.add_column("Stock Price", style="magenta", justify="right", width=11)
-        balance_table.add_column("Forex Rate", style="yellow", justify="right", width=11)
-        balance_table.add_column("Date", style="white", width=10)
-        balance_table.add_column("Declaration", style="white", width=12)
+        # Create single-year comprehensive balance summary table with dynamic sizing
+        balance_table = Table(
+            title=f"📊 Foreign Assets Balance Summary - CL{results.calendar_year}", 
+            show_header=True, 
+            header_style="bold magenta",
+            expand=True,
+            show_lines=False  # Keep structure but reduce clutter
+        )
+        balance_table.add_column("Balance Type", style="cyan", min_width=10, max_width=18, no_wrap=False)
+        balance_table.add_column("Amount (₹)", style="white", justify="right", min_width=12, max_width=25, no_wrap=False)
+        balance_table.add_column("Shares", style="purple", justify="right", min_width=6, max_width=12)
+        balance_table.add_column("Stock Price", style="magenta", justify="right", min_width=9, max_width=18, no_wrap=False)
+        balance_table.add_column("Forex Rate", style="yellow", justify="right", min_width=9, max_width=18, no_wrap=False)
+        balance_table.add_column("Date", style="white", min_width=15, max_width=20, no_wrap=False)  # Better date display
+        balance_table.add_column("Declaration", style="white", min_width=10, max_width=20, no_wrap=False)
         
-        # Opening Balance
-        opening_date = "Jan 01" if summary.opening_balance_inr > 0 else "-"
+        # Opening Balance (from initial vesting date, not Jan 1st)
+        opening_date = "Initial" if summary.opening_balance_inr > 0 else "-"
         opening_shares = f"{summary.opening_shares:.1f}" if summary.opening_shares > 0 else "0.0"
         opening_stock_price = f"${summary.opening_stock_price:.2f}" if summary.opening_stock_price > 0 else "-"
         opening_forex_rate = f"₹{summary.opening_exchange_rate:.4f}" if summary.opening_exchange_rate > 0 else "-"
@@ -745,16 +750,17 @@ def _display_rsu_summary_table(results, console) -> None:
     """Display RSU calculation summary in a structured table format."""
     from rich.table import Table
     
-    # Create summary table
+    # Create summary table with fixed column widths for proper terminal display
     summary_table = Table(
         title="📊 RSU Calculation Summary",
         show_header=True, 
         header_style="bold cyan"
     )
     
-    summary_table.add_column("Metric", style="cyan", width=25)
-    summary_table.add_column("Value", style="white", justify="right", width=20)
-    summary_table.add_column("Description", style="dim", width=35)
+    # Fixed columns with proper truncation for terminal readability
+    summary_table.add_column("Metric", style="cyan", width=20)
+    summary_table.add_column("Value", style="white", justify="right", width=18)
+    summary_table.add_column("Description", style="dim", width=65, overflow="ellipsis")
     
     # Add summary rows
     summary_table.add_row(
@@ -803,21 +809,24 @@ def _display_vesting_events_table(vesting_events, console) -> None:
     
     console.print("\n🔸 [bold yellow]Vesting Events[/bold yellow]")
     
-    # Create vesting table with better structure
+    # Create vesting table with dynamic column sizing and proper structure
     vesting_table = Table(
         show_header=True, 
-        header_style="bold green"
+        header_style="bold green",
+        expand=True,
+        show_lines=False  # Keep table structure but reduce visual clutter
     )
     
-    vesting_table.add_column("Vest Date", style="cyan", width=12)
-    vesting_table.add_column("Grant", style="yellow", width=10)
-    vesting_table.add_column("Shares", style="white", justify="right", width=8)
-    vesting_table.add_column("FMV/Share", style="green", justify="right", width=12)
-    vesting_table.add_column("USD Value", style="green", justify="right", width=12)
-    vesting_table.add_column("Exchange Rate", style="purple", justify="right", width=12)
-    vesting_table.add_column("INR Value", style="green", justify="right", width=15)
-    vesting_table.add_column("Vesting Value", style="magenta", justify="right", width=15)
-    vesting_table.add_column("FY", style="cyan", width=8)
+    # Dynamic columns with improved constraints and text wrapping
+    vesting_table.add_column("Vest Date", style="cyan", min_width=15, max_width=20, no_wrap=False)  # More space for dates
+    vesting_table.add_column("Grant", style="yellow", min_width=8, max_width=15, no_wrap=False)
+    vesting_table.add_column("Shares", style="white", justify="right", min_width=6, max_width=12)
+    vesting_table.add_column("FMV/Share", style="green", justify="right", min_width=10, max_width=20, no_wrap=False)
+    vesting_table.add_column("USD Value", style="green", justify="right", min_width=10, max_width=20, no_wrap=False)
+    vesting_table.add_column("Exchange Rate", style="purple", justify="right", min_width=10, max_width=18, no_wrap=False)
+    vesting_table.add_column("INR Value", style="green", justify="right", min_width=12, max_width=25, no_wrap=False)
+    vesting_table.add_column("Vesting Value", style="magenta", justify="right", min_width=12, max_width=25, no_wrap=False)
+    vesting_table.add_column("FY", style="cyan", min_width=6, max_width=12)
     
     total_shares = 0
     total_value_usd = 0
@@ -869,26 +878,29 @@ def _display_sale_events_table(sale_events, console) -> None:
     
     console.print(f"\n🔹 [bold cyan]Sale Events[/bold cyan]")
     
-    # Create sales table with better structure
+    # Create sales table with dynamic column sizing and proper structure
     sales_table = Table(
         show_header=True, 
-        header_style="bold magenta"
+        header_style="bold magenta",
+        expand=True,
+        show_lines=False  # Keep table structure but reduce visual clutter
     )
     
-    sales_table.add_column("Vest Date", style="cyan", width=12)
-    sales_table.add_column("Sale Date", style="cyan", width=12)
-    sales_table.add_column("Grant", style="yellow", width=10)
-    sales_table.add_column("Shares", style="white", justify="right", width=8)
-    sales_table.add_column("Hold Period", style="dim", justify="center", width=10)
-    sales_table.add_column("Cost Basis", style="yellow", justify="right", width=12)
-    sales_table.add_column("Sale Price", style="green", justify="right", width=12)
-    sales_table.add_column("Sale Rate", style="magenta", justify="right", width=12)
-    sales_table.add_column("USD Proceeds", style="green", justify="right", width=13)
-    sales_table.add_column("INR Proceeds", style="green", justify="right", width=15)
-    sales_table.add_column("Capital Gain (USD)", justify="right", width=15)
-    sales_table.add_column("Capital Gain (INR)", justify="right", width=15)
-    sales_table.add_column("Type", style="magenta", justify="center", width=6)
-    sales_table.add_column("FY", style="cyan", width=8)
+    # Dynamic columns with enhanced constraints and text wrapping
+    sales_table.add_column("Vest Date", style="cyan", min_width=15, max_width=20, no_wrap=False)  # Better date display
+    sales_table.add_column("Sale Date", style="cyan", min_width=15, max_width=20, no_wrap=False)  # Better date display
+    sales_table.add_column("Grant", style="yellow", min_width=6, max_width=15, no_wrap=False)
+    sales_table.add_column("Shares", style="white", justify="right", min_width=6, max_width=12)
+    sales_table.add_column("Hold Period", style="dim", justify="center", min_width=8, max_width=15, no_wrap=False)
+    sales_table.add_column("Cost Basis", style="yellow", justify="right", min_width=10, max_width=20, no_wrap=False)
+    sales_table.add_column("Sale Price", style="green", justify="right", min_width=10, max_width=20, no_wrap=False)
+    sales_table.add_column("Sale Rate", style="magenta", justify="right", min_width=10, max_width=20, no_wrap=False)
+    sales_table.add_column("USD Proceeds", style="green", justify="right", min_width=11, max_width=22, no_wrap=False)
+    sales_table.add_column("INR Proceeds", style="green", justify="right", min_width=12, max_width=25, no_wrap=False)
+    sales_table.add_column("Capital Gain (USD)", justify="right", min_width=13, max_width=25, no_wrap=False)  # Wrap instead of ellipsis
+    sales_table.add_column("Capital Gain (INR)", justify="right", min_width=13, max_width=25, no_wrap=False)  # Wrap instead of ellipsis
+    sales_table.add_column("Type", style="magenta", justify="center", min_width=4, max_width=10)
+    sales_table.add_column("FY", style="cyan", min_width=6, max_width=12)
     
     total_shares_sold = 0
     total_cost_basis = 0
@@ -982,28 +994,29 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
     if bank_transactions is None:
         bank_transactions = {}
 
-    # Create proceedings table with detailed columns
+    # Create proceedings table with compact terminal display (detailed data in Excel)
     proceedings_table = Table(
         show_header=True,
         header_style="bold green"
     )
 
-    proceedings_table.add_column("Sale Date", style="cyan", width=12)
-    proceedings_table.add_column("Txns", style="dim", justify="center", width=5)
+    # Compact columns with truncation for terminal readability
+    proceedings_table.add_column("Sale Date", style="cyan", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Txns", style="dim", justify="center", width=4)
     proceedings_table.add_column("Shares", style="white", justify="right", width=6)
-    proceedings_table.add_column("Expected (USD)", style="green", justify="right", width=12)
-    proceedings_table.add_column("Expected Rate", style="purple", justify="right", width=11)
-    proceedings_table.add_column("Expected (INR)", style="green", justify="right", width=12)
-    proceedings_table.add_column("Bank Rcvd (USD)", style="green", justify="right", width=12)
-    proceedings_table.add_column("Bank Rate", style="purple", justify="right", width=10)
-    proceedings_table.add_column("Bank Rcvd (INR)", style="green", justify="right", width=12)
-    proceedings_table.add_column("Exchange GST", style="red", justify="right", width=11)
-    proceedings_table.add_column("Final Rcvd (INR)", style="green", justify="right", width=12)
-    proceedings_table.add_column("Net Difference (INR)", justify="right", width=15)
-    proceedings_table.add_column("Transfer Expense (USD)", style="red", justify="right", width=14)
-    proceedings_table.add_column("Transfer Expense (INR)", style="red", justify="right", width=14)
-    proceedings_table.add_column("Exchange Rate Gain/Loss", style="magenta", justify="right", width=16)
-    proceedings_table.add_column("Status", style="yellow", width=8)
+    proceedings_table.add_column("Expected (USD)", style="green", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Exp Rate", style="purple", justify="right", width=8, overflow="ellipsis")
+    proceedings_table.add_column("Expected (INR)", style="green", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Bank Rcvd (USD)", style="green", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Bank Rate", style="purple", justify="right", width=8, overflow="ellipsis")
+    proceedings_table.add_column("Bank Rcvd (INR)", style="green", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Exchange GST", style="red", justify="right", width=9, overflow="ellipsis")
+    proceedings_table.add_column("Final Rcvd (INR)", style="green", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Net Diff (INR)", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Transfer Exp (USD)", style="red", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Transfer Exp (INR)", style="red", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("FX Gain/Loss", style="magenta", justify="right", width=9, overflow="ellipsis")
+    proceedings_table.add_column("Status", style="yellow", width=6, overflow="ellipsis")
 
     total_shares = 0
     total_usd_proceeds = 0
@@ -1201,7 +1214,7 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
     else:
         console.print(f"\n[yellow]⚠️ No bank transactions found - add bank statements to see detailed breakdown[/yellow]")
     
-    console.print(f"\n[dim]💡 This table shows complete transaction flow with transfer expenses and exchange rate impact[/dim]")
+    console.print(f"\n[dim]💡 This table shows a compact overview - full detailed breakdown available in Excel report[/dim]")
     console.print(f"[dim]📋 Net Difference column shows gain/loss vs expected amounts: Green=Gain, Red=Loss - useful for ITR filing[/dim]")
 
 
@@ -1457,8 +1470,8 @@ def _display_multi_year_summary_table(results, console, detailed: bool = False) 
         # Declaration status for peak balance only
         declaration = "[red]Required[/red]" if summary.declaration_required else "[green]Not Req'd[/green]"
         
-        # Opening Balance
-        opening_date = "Jan 01" if summary.opening_balance_inr > 0 else "-"
+        # Opening Balance (from initial vesting date, not Jan 1st)
+        opening_date = "Initial" if summary.opening_balance_inr > 0 else "-"
         opening_shares = f"{summary.opening_shares:.1f}" if summary.opening_shares > 0 else "0.0"
         opening_stock_price = f"${summary.opening_stock_price:.2f}" if summary.opening_stock_price > 0 else "-"
         opening_forex_rate = f"₹{summary.opening_exchange_rate:.4f}" if summary.opening_exchange_rate > 0 else "-"

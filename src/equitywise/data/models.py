@@ -15,7 +15,7 @@ Key Model Categories:
 2. **Financial Reference Data**:
    - SBIRateRecord: SBI TTBR USD-INR exchange rates with date parsing
    - AdobeStockRecord: Historical stock prices with validation
-   - ESOPVestingRecord: ESOP vesting data from PDF parsing
+       - RSUVestingRecord: RSU vesting data from PDF parsing
 
 3. **Banking & Reconciliation**:
    - BankStatementRecord: Bank transfer data with broker detection
@@ -49,8 +49,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
-# Import ESOP models from our parser
-from equitywise.data.esop_parser import ESOPVestingRecord
+# Import RSU models from our parser
+from equitywise.data.rsu_parser import RSUVestingRecord
 
 
 class BenefitHistoryRecord(BaseModel):
@@ -258,7 +258,7 @@ class GLStatementRecord(BaseModel):
     @classmethod
     def validate_record_type(cls, v):
         """Validate record type is one of expected values"""
-        valid_types = {"Sale", "Sell", "Buy", "Transfer", "Split", "Dividend", "stock split", "ESOP"}  # Added "Sell"
+        valid_types = {"Sale", "Sell", "Buy", "Transfer", "Split", "Dividend", "stock split", "RSU"}  # Added "Sell"
         if v not in valid_types:
             raise ValueError(f"Invalid record type: {v}. Must be one of {valid_types}")
         return v
@@ -389,7 +389,7 @@ class ForeignAssetRecord(BaseModel):
     
     model_config = ConfigDict(populate_by_name=True, str_strip_whitespace=True)
     
-    asset_type: Literal["Shares", "ESOP"] = "Shares"
+    asset_type: Literal["Shares", "RSU"] = "Shares"
     company_name: str = "Adobe Inc."
     country: str = "USA"
     record_date: Date
@@ -612,10 +612,11 @@ class EmployerCompanyRecord(BaseModel):
     @classmethod
     def validate_tan(cls, v: str) -> str:
         v = v.strip().upper()
-        if not v.startswith('MRT') and not v.startswith('CHA'):
-            raise ValueError("TAN should start with MRT or CHA")
+        # TAN can start with various prefixes like MRT, CHA, BLR, etc. depending on region
         if len(v) != 10:
             raise ValueError("TAN should be 10 characters long")
+        if not v[:-1].isalnum():  # All characters except last should be alphanumeric
+            raise ValueError("TAN should contain only alphanumeric characters")
         return v
     
     @field_validator('pin_code')
@@ -687,39 +688,42 @@ class ForeignDepositoryAccountRecord(BaseModel):
 
 # Factory function to create default company records from ITR data
 def create_default_company_records() -> tuple[EmployerCompanyRecord, ForeignCompanyRecord, ForeignDepositoryAccountRecord]:
-    """Create default company and depository records - replace with your actual ITR data."""
+    """Create predefined company and depository records based on your ITR filing data."""
     
+    # Adobe India - Employer company details (Update with your actual employer TAN)
     employer = EmployerCompanyRecord(
-        company_name="Your Employer Company Name",
-        tan="MRTXXXXXXX",
-        address_line1="Employer Address Line 1",
-        city="City",
-        state="State", 
-        pin_code="000000"
+        company_name="Adobe Systems India Private Limited",
+        tan="BLRA00285C",  # Update with your actual employer TAN from Form 16
+        address_line1="Block B, Cessna Business Park, Outer Ring Road",
+        city="Bengaluru",
+        state="Karnataka", 
+        pin_code="560087"
     )
     
+    # Adobe Inc. - Foreign company details (as per your ITR filing)
     foreign_company = ForeignCompanyRecord(
-        company_name="Foreign Company Name",
+        company_name="Adobe Incorporation",
         country_name="United States of America",
         country_code="2",
-        address_line1="Foreign Company Address",
-        city="City", 
-        state_province="State",
-        zip_code="00000",
+        address_line1="34, Park Avenue, San Jose",
+        city="San Jose", 
+        state_province="California",
+        zip_code="95110",
         nature_of_entity="LISTED"
     )
     
+    # Morgan Stanley - Foreign depository account details (as per your ITR filing)
     depository_account = ForeignDepositoryAccountRecord(
-        account_number="000000000",
+        account_number="1203516687",
         account_status="Beneficial Owner",
-        institution_name="Depository Institution Name",
-        institution_address="Institution Address",
-        institution_city="City",
-        institution_state="State",
-        institution_zip="00000",
+        institution_name="Morgan Stanley",
+        institution_address="1585 Broadway",
+        institution_city="New York",
+        institution_state="NY",
+        institution_zip="10036",
         institution_country="United States of America",
         institution_country_code="2",
-        account_opening_date=Date(2020, 1, 1)
+        account_opening_date=Date(2021, 11, 18)  # 18/11/2021 from your ITR
     )
     
     return employer, foreign_company, depository_account

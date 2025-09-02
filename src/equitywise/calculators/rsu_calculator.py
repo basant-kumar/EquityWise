@@ -14,7 +14,7 @@ from ..data.models import (
     SBIRateRecord, 
     AdobeStockRecord,
     RSUTransaction,
-    ESOPVestingRecord
+    RSUVestingRecord
 )
 from ..utils.date_utils import get_financial_year_dates
 from ..utils.currency_utils import format_currency
@@ -265,11 +265,11 @@ class RSUCalculator:
         logger.info(f"Successfully processed {len(vesting_events)} vesting events")
         return vesting_events
     
-    def process_esop_vesting_events(
-        self, 
-        esop_records: List[ESOPVestingRecord]
+    def process_rsu_vesting_events(
+        self,
+        rsu_records: List[RSUVestingRecord]
     ) -> List[VestingEvent]:
-        """Process RSU vesting events from ESOP PDF records with accurate FMV and exchange rates."""
+        """Process RSU vesting events from RSU PDF records with accurate FMV and exchange rates."""
         
         # =================================================================================
         # RSU VESTING CALCULATION FORMULAS
@@ -283,8 +283,8 @@ class RSUCalculator:
         # 5. Capital gains tax only applies when shares are sold (difference between sale price and FMV at vesting)
         #
         # FORMULA 1: Individual Share Value (INR)
-        # Purpose: Convert USD FMV to INR using exact ESOP exchange rate
-        # Formula: Vest_FMV_INR = Vest_FMV_USD × ESOP_Exchange_Rate
+        # Purpose: Convert USD FMV to INR using exact RSU exchange rate
+        # Formula: Vest_FMV_INR = Vest_FMV_USD × RSU_Exchange_Rate
         # Example: $419.49 × ₹86.3632 = ₹36,228.50 per share
         #
         # FORMULA 2: Total Vesting Income (USD)
@@ -293,23 +293,23 @@ class RSUCalculator:
         # Example: $419.49 × 3 shares = $1,258.47
         #
         # FORMULA 3: Total Vesting Income (INR) - Primary Method
-        # Purpose: Get exact INR vesting income amount from ESOP document (most accurate)
-        # Source: Direct from ESOP PDF "Total (INR)" column
-        # Note: Preferred over calculated value due to rounding precision in ESOP
+        # Purpose: Get exact INR vesting income amount from RSU document (most accurate)
+        # Source: Direct from RSU PDF "Total (INR)" column
+        # Note: Preferred over calculated value due to rounding precision in RSU
         #
         # FORMULA 4: Total Vesting Income (INR) - Calculated Method (Fallback)
-        # Purpose: Calculate INR vesting income amount if ESOP total not available
-        # Formula: Total_Vesting_INR = Total_Vesting_USD × ESOP_Exchange_Rate
+        # Purpose: Calculate INR vesting income amount if RSU total not available
+        # Formula: Total_Vesting_INR = Total_Vesting_USD × RSU_Exchange_Rate
         # Example: $1,258.47 × ₹86.3632 = ₹108,685.50
         # =================================================================================
         
         vesting_events = []
         
-        logger.info(f"Found {len(esop_records)} ESOP vesting records to process")
-        
-        for record in esop_records:
+        logger.info(f"Found {len(rsu_records)} RSU vesting records to process")
+
+        for record in rsu_records:
             try:
-                # Extract raw data from ESOP PDF (most accurate source)
+                # Extract raw data from RSU PDF (most accurate source)
                 vest_date = record.vesting_date
                 exchange_rate = record.forex_rate
                 vest_fmv_usd = record.fmv_usd
@@ -322,8 +322,8 @@ class RSUCalculator:
                 # Formula 2: Total USD value of vested shares
                 total_taxable_gain_usd = vest_fmv_usd * vested_quantity
                 
-                # Formula 3: Use exact INR total from ESOP document (preferred)
-                total_taxable_gain_inr = record.total_inr  # Most accurate - from ESOP PDF
+                # Formula 3: Use exact INR total from RSU document (preferred)
+                total_taxable_gain_inr = record.total_inr  # Most accurate - from RSU PDF
                 
                 vesting_event = VestingEvent(
                     vest_date=vest_date,
@@ -345,14 +345,14 @@ class RSUCalculator:
                 vest_key = f"{vest_date}_{record.grant_number}"
                 self.vesting_events[vest_key] = vesting_event
                 
-                logger.debug(f"Processed ESOP vesting: {record.grant_number} - {vested_quantity} shares on {vest_date}, "
+                logger.debug(f"Processed RSU vesting: {record.grant_number} - {vested_quantity} shares on {vest_date}, "
                            f"FMV ${vest_fmv_usd:.2f}, Rate ₹{exchange_rate:.2f}, Taxable gain ₹{total_taxable_gain_inr:,.2f}")
                            
             except Exception as e:
-                logger.error(f"Error processing ESOP vesting record {record.grant_number}: {e}")
+                logger.error(f"Error processing RSU vesting record {record.grant_number}: {e}")
                 continue
         
-        logger.info(f"Successfully processed {len(vesting_events)} ESOP vesting events")
+        logger.info(f"Successfully processed {len(vesting_events)} RSU vesting events")
         logger.info(f"Stored {len(self.vesting_events)} vesting events for sale lookup")
         return vesting_events
     
@@ -471,10 +471,10 @@ class RSUCalculator:
                 holding_days = (record.date_sold - acquisition_date).days
                 gain_type = "Long-term" if holding_days > (24 * 30) else "Short-term"
                 
-                # Get original vesting details from stored ESOP data
+                # Get original vesting details from stored RSU data
                 vesting_details = self.get_vesting_details(acquisition_date, record.grant_number or "")
                 if vesting_details:
-                    # Use exact vesting data from ESOP PDF
+                    # Use exact vesting data from RSU PDF
                     vest_fmv_usd = vesting_details.vest_fmv_usd
                     vest_exchange_rate = vesting_details.exchange_rate
                     vest_fmv_inr = vesting_details.vest_fmv_inr

@@ -12,17 +12,17 @@ from pydantic import BaseModel
 from .fa_calculator import FACalculator, EquityHolding, FADeclarationSummary, FACalculationResults
 from ..data.loaders import (
     BenefitHistoryLoader, SBIRatesLoader, AdobeStockDataLoader, DataValidator,
-    ESOPLoader, GLStatementLoader
+    RSULoader, GLStatementLoader
 )
 from ..data.models import (
     BenefitHistoryRecord, SBIRateRecord, AdobeStockRecord,
-    ESOPVestingRecord, GLStatementRecord, ForeignCompanyRecord,
+    RSUVestingRecord, GLStatementRecord, ForeignCompanyRecord,
     EmployerCompanyRecord, ForeignDepositoryAccountRecord,
     create_default_company_records
 )
 from ..config.settings import Settings
 
-
+ 
 class FAService:
     """Main Foreign Assets calculation service."""
     
@@ -39,41 +39,41 @@ class FAService:
         return self.employer_company, self.foreign_company, self.depository_account
         
     def load_required_data(self) -> Tuple[
-        List[ESOPVestingRecord],
+        List[RSUVestingRecord],
         List[GLStatementRecord], 
         List[SBIRateRecord], 
         List[AdobeStockRecord]
     ]:
-        """Load required data sources for FA calculations using ESOP and G&L data."""
+        """Load required data sources for FA calculations using RSU and G&L data."""
         
         logger.info("Loading Foreign Assets calculation data from required sources")
         
         with Progress() as progress:
             # Create progress tasks
-            task1 = progress.add_task("Loading ESOP Vesting Data...", total=1)
+            task1 = progress.add_task("Loading RSU Vesting Data...", total=1)
             task2 = progress.add_task("Loading G&L Statements...", total=1)
             task3 = progress.add_task("Loading SBI Rates...", total=1) 
             task4 = progress.add_task("Loading Stock Data...", total=1)
             
-            # Load ESOP vesting data from ALL ESOP PDFs for comprehensive history
-            all_esop_records = []
+            # Load RSU vesting data from ALL RSU PDFs for comprehensive history
+            all_rsu_records = []
             
-            # Load from all configured ESOP PDF paths
-            for esop_path in self.settings.esop_pdf_paths:
-                if esop_path.exists():
+            # Load from all configured RSU PDF paths
+            for rsu_path in self.settings.rsu_pdf_paths:
+                if rsu_path.exists():
                     try:
-                        esop_loader = ESOPLoader(esop_path)
-                        esop_file_records = esop_loader.get_validated_records(str(esop_path))
-                        all_esop_records.extend(esop_file_records)
-                        logger.info(f"Loaded {len(esop_file_records)} ESOP vesting records from {esop_path.name}")
+                        rsu_loader = RSULoader(rsu_path)
+                        rsu_file_records = rsu_loader.get_validated_records(str(rsu_path))
+                        all_rsu_records.extend(rsu_file_records)
+                        logger.info(f"Loaded {len(rsu_file_records)} RSU vesting records from {rsu_path.name}")
                     except Exception as e:
-                        logger.error(f"Failed to load ESOP data from {esop_path}: {e}")
+                        logger.error(f"Failed to load RSU data from {rsu_path}: {e}")
                 else:
-                    logger.warning(f"ESOP PDF not found: {esop_path}")
+                    logger.warning(f"RSU PDF not found: {rsu_path}")
             
-            esop_records = all_esop_records
+            rsu_records = all_rsu_records
             progress.update(task1, advance=1)
-            logger.info(f"Total ESOP vesting records loaded from {len(self.settings.esop_pdf_paths)} PDFs: {len(esop_records)}")
+            logger.info(f"Total RSU vesting records loaded from {len(self.settings.rsu_pdf_paths)} PDFs: {len(rsu_records)}")
             
             # Load G&L Statements
             gl_records = []
@@ -98,7 +98,7 @@ class FAService:
             progress.update(task4, advance=1)
             logger.info(f"Loaded {len(stock_records)} Adobe stock price records")
         
-        return esop_records, gl_records, sbi_records, stock_records
+        return rsu_records, gl_records, sbi_records, stock_records
     
     def calculate_fa_for_year(
         self, 
@@ -123,7 +123,7 @@ class FAService:
         # =================================================================================
         #
         # FA compliance requires tracking three key balances for each calendar year:
-        # 1. Opening Balance (Jan 1): Value at start of calendar year
+        # 1. Opening Balance (Initial Vesting): Value from when assets were first acquired
         # 2. Peak Balance: Highest value during the calendar year  
         # 3. Closing Balance (Dec 31): Value at end of calendar year
         #
@@ -136,19 +136,19 @@ class FAService:
         #
         # STEP 2: Data Loading and Validation
         # Purpose: Load all required data sources
-        # Sources: ESOP PDFs, G&L statements, SBI rates, Adobe stock prices
+        # Sources: RSU PDFs, G&L statements, SBI rates, Adobe stock prices
         # Validation: Ensure data completeness for the target year
         #
         # STEP 3: Equity Holdings Processing
         # Purpose: Calculate current holdings and cost basis using FIFO
-        # Method: Use ESOP PDF data for accurate vesting costs
+        # Method: Use RSU PDF data for accurate vesting costs
         # Formula: Current_Holdings = Total_Vested_Before_Date - Total_Sold_Before_Date
         # Cost_Basis: FIFO allocation from earliest vestings
         #
         # STEP 4: Balance Analysis
         # Purpose: Calculate opening, peak, and closing balances
         # Method: Monthly calculations to identify peak value
-        # Opening_Balance = Holdings_Jan1 × Stock_Price_Jan1 × Exchange_Rate_Jan1
+        # Opening_Balance = Holdings_Initial × Stock_Price_Initial × Exchange_Rate_Initial
         # Peak_Balance = max(Monthly_Balance) for all months in year
         # Closing_Balance = Holdings_Dec31 × Stock_Price_Dec31 × Exchange_Rate_Dec31
         #
@@ -178,26 +178,26 @@ class FAService:
         logger.info(f"Starting FA calculations for calendar year {calendar_year} as of {as_of_date}")
         
         # STEP 2: Load all required data sources
-        esop_records, gl_records, sbi_records, stock_records = self.load_required_data()
+        rsu_records, gl_records, sbi_records, stock_records = self.load_required_data()
         
         # STEP 3: Initialize calculator with rate and price data
         calculator = FACalculator(sbi_records, stock_records)
         
-        # STEP 4: Process equity holdings using ESOP data for accurate cost basis
-        self.console.print("🔄 Processing equity holdings with ESOP data...")
+        # STEP 4: Process equity holdings using RSU data for accurate cost basis
+        self.console.print("🔄 Processing equity holdings with RSU data...")
         
-        equity_holdings = calculator.process_esop_equity_holdings(esop_records, gl_records, as_of_date)
+        equity_holdings = calculator.process_rsu_equity_holdings(rsu_records, gl_records, as_of_date)
         
         logger.info(f"Processed {len(equity_holdings)} equity holdings")
         
         # STEP 5: Calculate comprehensive FA summary with balance analysis
-        fa_summary = calculator.calculate_fa_summary(calendar_year, equity_holdings, esop_records, gl_records)
+        fa_summary = calculator.calculate_fa_summary(calendar_year, equity_holdings, rsu_records, gl_records)
         
         # Create results
         results = FACalculationResults(
             calculation_date=Date.today(),
             calendar_year=calendar_year,
-            benefit_history_records=len(esop_records),  # Now using ESOP records count
+            benefit_history_records=len(rsu_records),  # Now using RSU records count
             stock_price_records=len(stock_records),
             sbi_rate_records=len(sbi_records),
             equity_holdings=equity_holdings if detailed else [],
@@ -222,10 +222,10 @@ class FAService:
         logger.info("Starting multi-year FA calculations for all available data")
         
         # Determine available years from vesting data
-        esop_records, gl_records, sbi_records, stock_records = self.load_required_data()
+        rsu_records, gl_records, sbi_records, stock_records = self.load_required_data()
         
         # Get date range from vesting events
-        all_vesting_dates = [record.vesting_date for record in esop_records]
+        all_vesting_dates = [record.vesting_date for record in rsu_records]
         all_sale_dates = [record.date_sold for record in gl_records if record.date_sold]
         
         if not (all_vesting_dates or all_sale_dates):
@@ -289,7 +289,7 @@ class FAService:
             calendar_year=f"{start_year}-{end_year}",
             year_summaries=year_summaries,
             equity_holdings=all_holdings if detailed else [],
-            benefit_history_records=len(esop_records),
+            benefit_history_records=len(rsu_records),
             sbi_rate_records=len(sbi_records),
             stock_price_records=len(stock_records)
         )
