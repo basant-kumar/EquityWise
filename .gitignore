@@ -185,8 +185,15 @@ data/*.csv
 data/*.pdf
 
 # Personal financial documents - NEVER commit these!
-data/user_data/
-!data/user_data/README.md
+# Ignore specific file types in user_data directories
+data/user_data/**/*.xlsx
+data/user_data/**/*.xls
+data/user_data/**/*.pdf
+data/user_data/**/*.csv
+data/user_data/**/*.xlsm
+
+# But keep all README.md files for documentation
+!data/user_data/**/README.md
 
 # Log files
 *.log
