@@ -1073,7 +1073,7 @@ class FACalculator:
         
         summary = FADeclarationSummary(
             declaration_date=Date.today(),
-            calendar_year=calendar_year
+            calendar_year=str(calendar_year)
         )
         
         # Calculate comprehensive share statistics and balance analysis if data is available

@@ -76,48 +76,106 @@ class RSUService:
             task3 = progress.add_task("Loading SBI Rates...", total=1)
             task4 = progress.add_task("Loading Stock Data...", total=1)
             
-            # Load RSU vesting data from ALL RSU PDFs for comprehensive history
+            # Load RSU vesting data using AUTO-DISCOVERY from RSU documents directory
             all_rsu_records = []
             
-            # Load from all configured RSU PDF paths
-            for rsu_path in self.settings.rsu_pdf_paths:
-                if rsu_path.exists():
-                    try:
-                        rsu_loader = RSULoader(rsu_path)
-                        rsu_file_records = rsu_loader.get_validated_records(str(rsu_path))
-                        all_rsu_records.extend(rsu_file_records)
-                        logger.info(f"Loaded {len(rsu_file_records)} RSU vesting records from {rsu_path.name}")
-                    except Exception as e:
-                        logger.error(f"Failed to load RSU data from {rsu_path}: {e}")
-                else:
-                    logger.warning(f"RSU PDF not found: {rsu_path}")
+            # Use auto-discovery to find all RSU PDF files in the directory
+            rsu_files = self.settings.get_rsu_files(use_auto_discovery=True)
+            logger.info(f"Auto-discovered {len(rsu_files)} RSU PDF files for processing")
+            
+            for rsu_path in rsu_files:
+                try:
+                    rsu_loader = RSULoader(rsu_path)
+                    rsu_file_records = rsu_loader.get_validated_records(str(rsu_path))
+                    all_rsu_records.extend(rsu_file_records)
+                    logger.info(f"✅ Loaded {len(rsu_file_records)} RSU vesting records from {rsu_path.name}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load RSU data from {rsu_path}: {e}")
             
             rsu_records = all_rsu_records
             progress.update(task1, advance=1)
-            logger.info(f"Total RSU vesting records loaded from {len(self.settings.rsu_pdf_paths)} PDFs: {len(rsu_records)}")
+            logger.info(f"📊 Total RSU vesting records loaded from {len(rsu_files)} PDF files: {len(rsu_records)}")
             
-            # Load G&L Statements
+            # Load G&L Statements using AUTO-DISCOVERY from G&L statements directory
             gl_records = []
-            for gl_path in self.settings.gl_statements_paths:
-                if gl_path.exists():
+            
+            # Use auto-discovery to find all G&L statement files in the directory
+            gl_files = self.settings.get_gl_statement_files(use_auto_discovery=True)
+            logger.info(f"Auto-discovered {len(gl_files)} G&L statement files for processing")
+            
+            for gl_path in gl_files:
+                try:
                     gl_loader = GLStatementLoader(gl_path)
                     gl_file_records = gl_loader.get_validated_records()
                     gl_records.extend(gl_file_records)
-                    logger.info(f"Loaded {len(gl_file_records)} records from {gl_path.name}")
+                    logger.info(f"✅ Loaded {len(gl_file_records)} G&L records from {gl_path.name}")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load G&L data from {gl_path}: {e}")
+                    
             progress.update(task2, advance=1)
-            logger.info(f"Total G&L records: {len(gl_records)}")
+            logger.info(f"📊 Total G&L records loaded from {len(gl_files)} Excel files: {len(gl_records)}")
             
-            # Load SBI Rates
-            sbi_loader = SBIRatesLoader(self.settings.sbi_ttbr_rates_path)
-            sbi_records = sbi_loader.get_validated_records()
+            # Load SBI Exchange Rates using AUTO-DISCOVERY
+            sbi_records = []
+            exchange_rate_files = self.settings.discover_exchange_rate_files()
+            
+            if exchange_rate_files:
+                # Use the first exchange rate file found, or merge multiple if needed
+                primary_sbi_file = exchange_rate_files[0]  # Most common case: one main file
+                logger.info(f"Using exchange rate file: {primary_sbi_file.name}")
+                
+                try:
+                    sbi_loader = SBIRatesLoader(primary_sbi_file)
+                    sbi_records = sbi_loader.get_validated_records()
+                    logger.info(f"✅ Loaded {len(sbi_records)} SBI exchange rate records")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load SBI rates from {primary_sbi_file}: {e}")
+                    
+            else:
+                # Fallback to configured path
+                logger.warning("No exchange rate files found via auto-discovery, using configured path")
+                if self.settings.sbi_ttbr_rates_path.exists():
+                    try:
+                        sbi_loader = SBIRatesLoader(self.settings.sbi_ttbr_rates_path)
+                        sbi_records = sbi_loader.get_validated_records()
+                        logger.info(f"✅ Loaded {len(sbi_records)} SBI exchange rate records (fallback)")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to load SBI rates from configured path: {e}")
+                else:
+                    logger.error("❌ No SBI exchange rate files found")
+                    
             progress.update(task3, advance=1)
-            logger.info(f"Loaded {len(sbi_records)} SBI exchange rate records")
             
-            # Load Stock Data
-            stock_loader = AdobeStockDataLoader(self.settings.adobe_stock_data_path)
-            stock_records = stock_loader.get_validated_records()
+            # Load Adobe Stock Data using AUTO-DISCOVERY
+            stock_records = []
+            adobe_stock_files = self.settings.discover_adobe_stock_files()
+            
+            if adobe_stock_files:
+                # Use the first stock file found, or merge multiple if needed
+                primary_stock_file = adobe_stock_files[0]  # Most common case: one main file
+                logger.info(f"Using Adobe stock file: {primary_stock_file.name}")
+                
+                try:
+                    stock_loader = AdobeStockDataLoader(primary_stock_file)
+                    stock_records = stock_loader.get_validated_records()
+                    logger.info(f"✅ Loaded {len(stock_records)} Adobe stock price records")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load Adobe stock data from {primary_stock_file}: {e}")
+                    
+            else:
+                # Fallback to configured path  
+                logger.warning("No Adobe stock files found via auto-discovery, using configured path")
+                if self.settings.adobe_stock_data_path.exists():
+                    try:
+                        stock_loader = AdobeStockDataLoader(self.settings.adobe_stock_data_path)
+                        stock_records = stock_loader.get_validated_records()
+                        logger.info(f"✅ Loaded {len(stock_records)} Adobe stock price records (fallback)")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to load Adobe stock data from configured path: {e}")
+                else:
+                    logger.error("❌ No Adobe stock data files found")
+                    
             progress.update(task4, advance=1)
-            logger.info(f"Loaded {len(stock_records)} Adobe stock price records")
         
         return rsu_records, gl_records, sbi_records, stock_records
     
