@@ -27,13 +27,14 @@ By the end of this guide, you'll have:
   - Login to **E*Trade** → **At Work** → **My Account** → **Gains & Losses** → **Download Expanded**  
   - Save as: `G&L_Expanded_2023.xlsx`, `G&L_Expanded_2024.xlsx`, `G&L_Expanded_2025.xlsx`
 
-### Required RSU Documents from Excelity
-- [ ] **RSU Vesting Statements** - Download from Excelity Portal
+### Required RSU & ESPP Documents from Excelity
+- [ ] **RSU & ESPP Vesting Statements** - Download from Excelity Portal
   - Login to **Excelity Portal**
   - Navigate: **Payroll & Benefits** → **My Reports** → **Stock Perquisites Statement**
   - Select **Financial Year** (FY22-23, FY23-24, FY24-25, etc.)
   - **Download as PDF**
   - Save as: `RSU_FY-XX-XX.pdf`
+  - **Note**: Files automatically parse both RSU and ESPP entries
 
 ### Required Reference Data  
 - [ ] **Adobe Stock Price History** - Download from Yahoo Finance → ADBE → Historical Data
@@ -253,13 +254,13 @@ uv run equitywise calculate-rsu \
   --output-format both
 ```
 
-### 3.3 Understanding RSU Output
+### 3.3 Understanding RSU & ESPP Output
 
 **Console Output Example:**
 ```
 🎯 RSU Calculation Summary for FY 2024-25
 ==========================================
-📊 Vesting Summary:
+📊 Vesting Summary (includes both RSU and ESPP):
    • Total Vested: 25.0 shares
    • Total Value: ₹15,07,011.83
    • Taxable Income: ₹15,07,011.83
@@ -342,6 +343,29 @@ uv run equitywise calculate-fa \
 2. **Equity Holdings**: Detailed holdings with cost basis
 3. **Vest-wise Details**: Individual vesting event tracking
 4. **Balance Timeline**: Monthly balance progression
+
+### 4.4 FA CSV Export for Tax Forms
+
+Generate CSV files ready for direct import into FA declaration forms:
+
+```bash
+# Generate FA CSV for direct import into tax declaration forms
+uv run equitywise calculate-fa \
+  --calendar-year 2024 \
+  --output-format csv \
+  --export-fa-csv
+
+# Output will show:
+# ✅ FA Declaration CSV created: output/FA_Declaration_2024.csv
+# 📊 20 vest-wise entries ready for import
+# 💰 Total closing value: ₹5,71,12,239
+```
+
+**CSV Features:**
+- **Ready-to-import format**: Matches standard FA declaration form templates
+- **Vest-wise entries**: Each vesting event tracked separately
+- **Pre-filled entity data**: Adobe Inc. details automatically included
+- **Comprehensive values**: Initial, peak, closing, and sale proceeds for each vest
 
 ---
 

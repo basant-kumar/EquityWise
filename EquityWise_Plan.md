@@ -416,6 +416,42 @@ RSU_FA_Tool/
 - ✅ **Production Validation**: ₹15.07 lakh real data processing verified
 - ✅ **Distribution Ready**: Complete PyPI-ready package with professional metadata
 
+### Phase 9: ESPP Support & FA CSV Export Enhancement ✅
+**Status**: COMPLETED  
+**Actual Time**: 6 hours  
+**Completion Date**: December 3, 2024  
+
+- [x] **Extended ESPP Support**: Added comprehensive Employee Stock Purchase Plan (ESPP) parsing capabilities
+  - [x] Smart parser detects both RSU and ESPP entries from same PDF files automatically
+  - [x] Variable field position detection handles different PDF layouts (with/without "NA" fields)
+  - [x] ESPP grant price extraction for purchase transactions (e.g., $255.82 discounted purchase price)
+  - [x] Enhanced date format support: 15-04-2020, 15-Oct-20, 24-01-2021, etc.
+  - [x] Robust quantity detection using backward search for non-zero numeric values
+- [x] **FA Declaration CSV Export**: Direct CSV export matching tax form templates
+  - [x] Vest-wise entries ready for import into tax filing software
+  - [x] Pre-filled Adobe Inc. entity details (address, ZIP code, entity type)
+  - [x] Complete value tracking: Initial, peak, closing, and sale proceeds per vest
+  - [x] Generated CSV format matches standard FA declaration form structure
+- [x] **Enhanced Documentation**: Updated all README files to reflect new capabilities
+  - [x] Main README.md updated with ESPP support and CSV export features
+  - [x] USER_GUIDE.md enhanced with ESPP parsing and FA CSV generation instructions
+  - [x] Data folder README files updated to mention ESPP support
+  - [x] CHANGELOG.md updated with v1.2.0 release notes for new features
+
+**Phase 9 Testing & Validation**:
+- [x] **Production Testing**: Successfully parsed mixed RSU/ESPP files with 20+ entries
+- [x] **CSV Format Verification**: Generated FA_Declaration_2024.csv ready for direct import
+- [x] **Backward Compatibility**: Existing RSU-only workflows continue to work seamlessly
+- [x] **Cross-Validation**: ESPP and RSU calculations independently verified for accuracy
+- [x] **Documentation Testing**: All examples and instructions validated across updated files
+
+**Phase 9 Achievements**:
+- ✅ **Enhanced Equity Support**: Now handles both RSU and ESPP equity compensation types
+- ✅ **Tax Form Ready Export**: Direct CSV export eliminates manual data entry for FA declarations
+- ✅ **Flexible PDF Parsing**: Handles various PDF formats and layouts automatically
+- ✅ **Complete Documentation**: All README files updated to reflect new capabilities
+- ✅ **Production Validated**: Real mixed equity files successfully processed with complete accuracy
+
 ### 📋 Final Status
 **✅ All Tasks Complete - No Outstanding Issues**  
-**🚀 Ready for Production Use and Distribution**
+**🚀 Ready for Production Use and Distribution with Enhanced ESPP & CSV Export Features**

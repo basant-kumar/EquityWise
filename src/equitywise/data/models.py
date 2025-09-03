@@ -476,41 +476,72 @@ class BankStatementRecord(BaseModel):
     @property
     def is_broker_transaction(self) -> bool:
         """Check if this is a broker RSU transaction based on transaction remarks."""
-        # Look for patterns like "IRM/USD6213.87@87.0375GST576/INREM/20250204115415"
+        # Check if transaction matches any of the configured bank patterns
+        from equitywise.config.settings import settings
+        import re
+        
         remarks = self.transaction_remarks.upper()
-        return (
-            'IRM/' in remarks and 
-            'USD' in remarks and 
-            '@' in remarks and 
-            'INREM' in remarks and
-            self.is_credit  # Should be a credit transaction
-        )
+        
+        # Quick check for USD and credit transaction first
+        if 'USD' not in remarks or not self.is_credit:
+            return False
+        
+        # Try all configured patterns to see if any match
+        patterns = settings.bank_remittance_patterns
+        for pattern_key, pattern_regex in patterns.items():
+            if re.search(pattern_regex, self.transaction_remarks):
+                return True
+                
+        return False
     
-    def extract_broker_details(self) -> Optional[dict]:
-        """Extract broker transaction details from transaction remarks.
+    def extract_broker_details(self, bank_pattern: str = None) -> Optional[dict]:
+        """Extract broker transaction details from transaction remarks using configurable patterns.
+        
+        Args:
+            bank_pattern: Optional bank pattern key to use. If None, uses default pattern
+                         and falls back to trying all available patterns.
         
         Returns:
             Dict with detailed broker transaction breakdown including GST and transfer expenses.
+            Also includes 'pattern_used' key indicating which pattern successfully matched.
         """
         if not self.is_broker_transaction:
             return None
         
         import re
+        from equitywise.config.settings import settings
         
         try:
             # =================================================================================
             # BANK STATEMENT PARSING FORMULAS FOR RSU BROKER TRANSACTIONS
             # =================================================================================
             
-            # REGEX PATTERN: IRM/USD{amount}@{rate}GST{gst}/INREM/{timestamp}
-            # Example: "IRM/USD6213.87@87.0375GST576/INREM/20250204115415"
-            # Explanation:
-            #   - IRM/USD{amount}: USD amount bank processed (e.g., USD6213.87)
-            #   - @{rate}: Bank exchange rate used (e.g., @87.0375 = ₹87.0375 per USD)
-            #   - GST{amount}: GST amount deducted (e.g., GST576 = ₹576)
-            #   - /INREM/{timestamp}: Transaction reference and timestamp
-            pattern = r'IRM/USD([\d.]+)@([\d.]+)GST([\d.]+)'
-            match = re.search(pattern, self.transaction_remarks)
+            # Get available patterns from settings
+            patterns = settings.bank_remittance_patterns
+            
+            # Determine which patterns to try
+            if bank_pattern and bank_pattern in patterns:
+                # Use specific pattern if provided
+                patterns_to_try = [(bank_pattern, patterns[bank_pattern])]
+            else:
+                # Try default pattern first, then all others as fallback
+                default_key = settings.default_bank_pattern
+                patterns_to_try = [(default_key, patterns.get(default_key, patterns["default"]))]
+                
+                # Add other patterns as fallback (excluding the default we already tried)
+                for key, pattern in patterns.items():
+                    if key != default_key:
+                        patterns_to_try.append((key, pattern))
+            
+            match = None
+            pattern_used = None
+            
+            # Try patterns until one matches
+            for pattern_key, pattern_regex in patterns_to_try:
+                match = re.search(pattern_regex, self.transaction_remarks)
+                if match:
+                    pattern_used = pattern_key
+                    break
             
             if match:
                 usd_amount = float(match.group(1))        # Bank processed USD amount
@@ -540,7 +571,8 @@ class BankStatementRecord(BaseModel):
                     'inr_after_gst': inr_after_gst,
                     'gst_amount': gst_amount,
                     'actual_received': actual_received,
-                    'calculation_accurate': calculation_diff < 1.0  # Within ₹1 difference
+                    'calculation_accurate': calculation_diff < 1.0,  # Within ₹1 difference
+                    'pattern_used': pattern_used  # Which bank pattern successfully matched
                 }
         except (ValueError, AttributeError):
             pass

@@ -1,19 +1,20 @@
 # 🎯 EquityWise
 
-**Smart equity tax calculations from E*Trade data - RSU & Foreign Assets for Indian compliance**
+**Smart equity tax calculations from E*Trade data - RSU, ESPP & Foreign Assets for Indian compliance**
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests: 9/9 Passing](https://img.shields.io/badge/Tests-9%2F9%20Passing-brightgreen.svg)](tests/)
 
-EquityWise is a comprehensive tool for processing E*Trade and Excelity data to calculate tax obligations for RSU equity compensation and Foreign Assets compliance under Indian tax law.
+EquityWise is a comprehensive tool for processing E*Trade and Excelity data to calculate tax obligations for RSU and ESPP equity compensation and Foreign Assets compliance under Indian tax law.
 
 ## 🎯 **What This Tool Does**
 
-- **RSU Tax Calculations**: Accurately compute capital gains/losses on RSU sales
+- **RSU & ESPP Tax Calculations**: Accurately compute capital gains/losses on equity sales
 - **Foreign Assets Compliance**: Generate FA declaration data for Indian tax filing
+- **CSV Export for Tax Forms**: Direct CSV export for FA declaration form import
 - **Multi-Format Reports**: Professional Excel and CSV reports for tax preparation
-- **Bank Reconciliation**: Track RSU proceeds and transfer expenses
+- **Bank Reconciliation**: Track equity proceeds and transfer expenses (multi-bank support)
 - **Interactive CLI**: Guided workflows with progress tracking and error recovery
 
 ## 🚀 **Quick Start**
@@ -167,9 +168,9 @@ data/
 │   │   ├── G&L_Expanded_2024.xlsx      # (one file per calendar year)
 │   │   └── G&L_Expanded_2025.xlsx      # 
 │   ├── rsu_documents/
-│   │   ├── RSU_FY-22-23.pdf            # RSU vesting statements from Excelity
+│   │   ├── RSU_FY-22-23.pdf            # RSU & ESPP vesting statements from Excelity
 │   │   ├── RSU_FY-23-24.pdf            # (one file per financial year)
-│   │   ├── RSU_FY-24-25.pdf            # 
+│   │   ├── RSU_FY-24-25.pdf            # Supports both RSU and ESPP entries
 │   │   └── RSU_FY-25-26.pdf            # 
 │   └── bank_statements/
 │       ├── BankStatement_FY23-24.xls   # Bank transfer records (optional)
@@ -203,15 +204,18 @@ data/
   - Login to **E*Trade → At Work → My Account → Gains & Losses → Download Expanded**
   - Save in: `data/user_data/gl_statements/G&L_Expanded_YYYY.xlsx`
 
-#### 📄 **RSU Vesting Statements** → `data/user_data/rsu_documents/`
+#### 📄 **RSU & ESPP Vesting Statements** → `data/user_data/rsu_documents/`
 - Login to **Excelity Portal (Adobe Benefits)**
 - Navigate: **Payroll & Benefits → My Reports → Stock Perquisites Statement**
 - **Select Financial Year → Download as PDF**
 - Save as: `data/user_data/rsu_documents/RSU_FY-XX-XX.pdf`
+- **Note**: Files may contain both RSU and ESPP entries - both are automatically parsed
 
 #### 🏦 **Bank Statements** → `data/user_data/bank_statements/` (Optional)
-- Export bank statements covering RSU sale periods
+- Export bank statements covering RSU sale periods  
 - Save as: `data/user_data/bank_statements/BankStatement_FYXX-XX.xls`
+- **Multi-Bank Support**: Configurable patterns for SBI, HDFC, ICICI, Axis, Kotak banks
+- **Custom Patterns**: Add patterns for any bank - see [Bank Patterns Guide](docs/BANK_PATTERNS.md)
 
 #### 📈 **Adobe Stock Data** → `data/reference_data/adobe_stock/`
 - **Yahoo Finance**: Search "ADBE" → Historical Data → Download CSV
@@ -257,6 +261,12 @@ uv run equitywise calculate-fa \
 
 # Check if FA declaration is required
 uv run equitywise calculate-fa --calendar-year 2024 --check-only
+
+# Generate CSV export for direct import into FA declaration forms
+uv run equitywise calculate-fa \
+  --calendar-year 2024 \
+  --output-format csv \
+  --export-fa-csv
 ```
 
 **Sample Output:**
@@ -266,6 +276,9 @@ uv run equitywise calculate-fa --calendar-year 2024 --check-only
 💼 Vested Holdings: ₹4,23,455.76 (9.0 shares)
 📊 Peak Balance: ₹4,33,160.00 (May 31, 2024)
 ⚖️  Declaration Required: ✅ YES (Peak > ₹2,00,000)
+
+✅ FA Declaration CSV created: output/FA_Declaration_2024.csv
+📊 20 vest-wise entries ready for import
 ```
 
 ## 🎛️ **Command Reference**
@@ -340,6 +353,7 @@ uv run equitywise help-guide --section cli
 ### CSV Reports  
 - **RSU_Summary_FY24-25.csv**: Lightweight summary for analysis
 - **FA_Equity_Holdings_2024.csv**: Detailed holdings data
+- **FA_Declaration_2024.csv**: Ready-to-import FA declaration form data
 
 ### Console Output
 Beautiful Rich-formatted tables with color coding and progress indicators.
@@ -364,11 +378,19 @@ rsu_pdf_paths = [
     "data/user_data/rsu_documents/RSU_FY-24-25.pdf",
     "data/user_data/rsu_documents/RSU_FY-25-26.pdf"
 ]
+# Note: PDFs automatically parse both RSU and ESPP entries
 
 [calculation_settings]
 fa_declaration_threshold_inr = 200000.0
 fallback_days_exchange_rate = 7
 fallback_days_stock_price = 15
+
+[bank_settings]
+default_bank_pattern = "sbi"  # or "hdfc", "icici", "axis", "kotak"
+
+# Custom bank patterns (optional)
+[bank_settings.bank_remittance_patterns]
+mybank = "USD\\s+([\\d.]+)\\s+RATE([\\d.]+)\\s+FEE([\\d.]+)"
 
 [output_settings]
 default_output_dir = "output"
@@ -498,7 +520,7 @@ This tool is provided for informational purposes only. Tax calculations should b
 
 ## 🙏 **Acknowledgments**
 
-- **Adobe Inc.** for the RSU program structure  
+- **Adobe Inc.** for the RSU and ESPP program structure  
 - **E*Trade** for comprehensive transaction data export
 - **SBI** for TTBR exchange rate data
 - **Indian Income Tax Department** for FA declaration guidelines

@@ -5,6 +5,39 @@ All notable changes to EquityWise will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-03
+
+### 🎉 Major Enhancement - ESPP Support & FA CSV Export
+
+#### Added
+- **ESPP (Employee Stock Purchase Plan) Support**: 
+  - Extended RSU parser to handle both RSU and ESPP entries from the same PDF files
+  - Smart field detection automatically identifies RSU vs ESPP line formats
+  - ESPP grant price parsing for purchase transactions (e.g., $255.82 discounted price)
+  - Both RSU and ESPP now included in Foreign Assets calculations
+- **FA Declaration CSV Export**: 
+  - Direct CSV export matching FA declaration form templates
+  - Vest-wise entries ready for import into tax filing software
+  - Pre-filled Adobe Inc. entity details for immediate use
+  - Complete tracking: Initial value, peak value, closing balance, and sale proceeds
+
+#### Enhanced
+- **Flexible PDF Parsing**: Handles variable date formats (15-04-2020, 15-Oct-20, 24-01-2021)
+- **Robust Field Detection**: Automatically adapts to different PDF layouts with/without "NA" fields
+- **Improved Error Handling**: Better parsing of decimal quantities and complex line formats
+- **Enhanced Documentation**: Updated all README files to reflect ESPP support
+
+#### Technical Improvements
+- **Backward Compatible**: Existing RSU-only files continue to work seamlessly
+- **Smart Date Parsing**: Multiple date format support (%d-%m-%Y, %d-%b-%y, %d-%m-%y)
+- **Quantity Detection**: Dynamic field position detection for varying PDF structures
+- **Model Extensions**: Added grant_price_usd field for ESPP purchase price tracking
+
+#### Validation
+- **Production Tested**: Successfully parsed mixed RSU/ESPP files with 20+ vest-wise entries
+- **CSV Format Verified**: Generated files ready for direct import into FA declaration forms
+- **Cross-Validation**: ESPP and RSU calculations independently verified for accuracy
+
 ## [1.1.0] - 2025-08-30
 
 ### 🎯 Major Rebrand - EquityWise

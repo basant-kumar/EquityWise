@@ -195,6 +195,39 @@ class Settings(BaseSettings):
     # Currency settings
     base_currency: str = Field(default="INR", description="Base currency for calculations")
     
+    # Bank statement parsing settings
+    bank_remittance_patterns: dict = Field(
+        default={
+            "default": r'IRM/USD([\d.]+)@([\d.]+)GST([\d.]+)',
+            "sbi": r'IRM/USD([\d.]+)@([\d.]+)GST([\d.]+)',
+            "hdfc": r'USD\s+([\d.]+)\s+@\s+([\d.]+)\s+GST\s+([\d.]+)',
+            "icici": r'USD([\d.]+)/RATE([\d.]+)/GST([\d.]+)',
+            "axis": r'FOREX\s+USD([\d.]+)\s+RATE([\d.]+)\s+SERVICE([\d.]+)',
+            "kotak": r'REMIT\s+USD([\d.]+)\s+EXRATE([\d.]+)\s+CHARGES([\d.]+)'
+        },
+        description="""Bank-specific regex patterns for parsing USD remittance details from transaction remarks.
+        
+        Pattern Format: Each pattern should capture 3 groups: (usd_amount, exchange_rate, charges/gst)
+        - Group 1: USD amount (e.g., 6213.87)
+        - Group 2: Exchange rate (e.g., 87.0375) 
+        - Group 3: Charges/GST amount (e.g., 576)
+        
+        Examples:
+        - SBI: "IRM/USD6213.87@87.0375GST576/INREM/20250204115415"
+        - HDFC: "USD 6213.87 @ 87.0375 GST 576 REMITTANCE RECEIVED"
+        - ICICI: "USD6213.87/RATE87.0375/GST576"
+        - Axis: "FOREX USD6213.87 RATE87.0375 SERVICE576"
+        
+        To add custom patterns, update this dictionary or use environment variable:
+        RSU_FA_BANK_REMITTANCE_PATTERNS='{"mybank": "regex_pattern_here"}'
+        """
+    )
+    
+    default_bank_pattern: str = Field(
+        default="default",
+        description="Default bank pattern key to use for parsing bank statements. Change to match your bank."
+    )
+    
     # ===================================================================================
     # FILE DISCOVERY METHODS (NEW APPROACH)
     # ===================================================================================
@@ -380,6 +413,99 @@ class Settings(BaseSettings):
         if not existing_paths:
             logger.warning("No G&L files found in configured paths either")
         return existing_paths
+    
+    # ===================================================================================
+    # BANK PATTERN MANAGEMENT METHODS
+    # ===================================================================================
+    
+    def get_available_bank_patterns(self) -> dict:
+        """Get all available bank patterns.
+        
+        Returns:
+            Dictionary of bank_name -> regex_pattern
+        """
+        return self.bank_remittance_patterns.copy()
+    
+    def add_bank_pattern(self, bank_name: str, pattern: str, set_as_default: bool = False) -> bool:
+        """Add a custom bank pattern.
+        
+        Args:
+            bank_name: Name/key for the bank pattern
+            pattern: Regex pattern that captures (usd_amount, exchange_rate, charges)
+            set_as_default: If True, set this pattern as the default
+            
+        Returns:
+            True if pattern was added successfully, False if validation failed
+        """
+        # Validate pattern has exactly 3 capture groups
+        import re
+        try:
+            compiled = re.compile(pattern)
+            if compiled.groups != 3:
+                logger.error(f"Bank pattern must have exactly 3 capture groups, got {compiled.groups}")
+                return False
+        except re.error as e:
+            logger.error(f"Invalid regex pattern: {e}")
+            return False
+        
+        # Add pattern
+        self.bank_remittance_patterns[bank_name] = pattern
+        logger.info(f"Added bank pattern '{bank_name}': {pattern}")
+        
+        # Set as default if requested
+        if set_as_default:
+            self.default_bank_pattern = bank_name
+            logger.info(f"Set '{bank_name}' as default bank pattern")
+            
+        return True
+    
+    def test_bank_pattern(self, pattern: str, test_string: str) -> Optional[dict]:
+        """Test a bank pattern against a sample transaction string.
+        
+        Args:
+            pattern: Regex pattern to test
+            test_string: Sample transaction remark string
+            
+        Returns:
+            Dictionary with extracted values if successful, None if no match
+        """
+        import re
+        try:
+            match = re.search(pattern, test_string)
+            if match:
+                return {
+                    'usd_amount': float(match.group(1)),
+                    'exchange_rate': float(match.group(2)), 
+                    'charges_gst': float(match.group(3)),
+                    'pattern_matched': True
+                }
+        except (ValueError, AttributeError, re.error) as e:
+            logger.error(f"Pattern test failed: {e}")
+            
+        return None
+    
+    def validate_bank_patterns(self) -> bool:
+        """Validate all configured bank patterns.
+        
+        Returns:
+            True if all patterns are valid, False otherwise
+        """
+        import re
+        all_valid = True
+        
+        for bank_name, pattern in self.bank_remittance_patterns.items():
+            try:
+                compiled = re.compile(pattern)
+                if compiled.groups != 3:
+                    logger.error(f"Bank pattern '{bank_name}' has {compiled.groups} groups, expected 3")
+                    all_valid = False
+                else:
+                    logger.debug(f"Bank pattern '{bank_name}' is valid")
+            except re.error as e:
+                logger.error(f"Bank pattern '{bank_name}' is invalid: {e}")
+                all_valid = False
+                
+        return all_valid
     
     model_config = ConfigDict(
         env_file=".env",
