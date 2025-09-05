@@ -140,6 +140,12 @@ class Settings(BaseSettings):
         description="Path to Adobe stock historical data CSV file"
     )
     
+    # Template files for report generation
+    fa_declaration_template_path: Path = Field(
+        default=Path("data/reference_data/templates/FA_Declaration_Template.csv"),
+        description="Path to FA declaration CSV template file for proper column formatting"
+    )
+    
     # All RSU PDF files for comprehensive vesting history
     rsu_pdf_paths: List[Path] = Field(
         default=[

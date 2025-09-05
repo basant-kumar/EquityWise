@@ -336,3 +336,123 @@ class CSVReporter:
         
         logger.info(f"Vest-wise details CSV saved: {filepath}")
         return filepath
+    
+    def generate_fa_declaration_csv(
+        self,
+        summary: FADeclarationSummary,
+        calendar_year: str = None,
+        template_path: Optional[Path] = None
+    ) -> Path:
+        """Generate FA declaration CSV ready for tax form import using template format.
+        
+        Args:
+            summary: FA declaration summary with vest-wise details
+            calendar_year: Calendar year for the report
+            template_path: Path to FA declaration CSV template (optional)
+            
+        Returns:
+            Path to generated FA declaration CSV file
+        """
+        logger.info(f"Generating FA declaration CSV for {calendar_year or 'current year'}")
+        
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        cy_suffix = f"_{calendar_year}" if calendar_year else ""
+        filename = f"FA_Declaration{cy_suffix}_{timestamp}.csv"
+        filepath = self.output_dir / filename
+        
+        # Load template headers if template provided
+        template_headers = self._load_template_headers(template_path)
+        
+        # Create CSV data based on vest-wise details
+        csv_data = self._create_fa_declaration_data(summary.vest_wise_details, template_headers)
+        
+        # Write CSV file
+        with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # Write headers
+            if template_headers:
+                writer.writerow(template_headers)
+            else:
+                # Fallback headers if no template
+                writer.writerow([
+                    "Country/Region name",
+                    "Country Name and Code", 
+                    "Name of entity",
+                    "Address of entity",
+                    "ZIP Code",
+                    "Nature of entity",
+                    "Date of acquiring the interest",
+                    "Initial value of the investment",
+                    "Peak value of investment during the Period",
+                    "Closing balance",
+                    "Total gross amount paid/credited with respect to the holding during the period",
+                    "Total gross proceeds from sale or redemption of investment during the period"
+                ])
+            
+            # Write data rows
+            writer.writerows(csv_data)
+        
+        logger.info(f"FA declaration CSV saved: {filepath}")
+        logger.info(f"Generated {len(csv_data)} vest-wise entries for FA declaration")
+        return filepath
+    
+    def _load_template_headers(self, template_path: Optional[Path]) -> Optional[List[str]]:
+        """Load CSV headers from template file.
+        
+        Args:
+            template_path: Path to template CSV file
+            
+        Returns:
+            List of header strings, or None if no template
+        """
+        if not template_path or not template_path.exists():
+            logger.debug("No template file provided or template file not found")
+            return None
+            
+        try:
+            with open(template_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile)
+                headers = next(reader)  # Read first row as headers
+                # Clean headers - remove empty strings and strip whitespace
+                headers = [h.strip() for h in headers if h.strip()]
+                logger.info(f"Loaded {len(headers)} headers from template: {template_path}")
+                return headers
+        except Exception as e:
+            logger.error(f"Failed to load template headers: {e}")
+            return None
+    
+    def _create_fa_declaration_data(self, vest_wise_details: List[VestWiseDetails], headers: Optional[List[str]]) -> List[List[str]]:
+        """Create FA declaration data rows from vest-wise details.
+        
+        Args:
+            vest_wise_details: List of vest-wise detail records
+            headers: Optional list of headers to determine column order
+            
+        Returns:
+            List of data rows for CSV export
+        """
+        csv_data = []
+        
+        for detail in vest_wise_details:
+            # Standard row data
+            row = [
+                "United States of America",  # Country/Region name
+                "United States of America (US)",  # Country Name and Code
+                "Adobe Inc.",  # Name of entity
+                "345 Park Avenue, San Jose, CA 95110-2704, United States",  # Address of entity
+                "95110",  # ZIP Code
+                "Listed Company",  # Nature of entity
+                detail.vest_date.strftime("%d/%m/%Y"),  # Date of acquiring the interest
+                f"{detail.initial_value_inr:.2f}",  # Initial value of the investment
+                f"{detail.peak_value_inr:.2f}",  # Peak value during the Period
+                f"{detail.closing_value_inr:.2f}",  # Closing balance
+                "0.00",  # Total gross amount paid/credited during the period (vesting is non-cash)
+                f"{detail.gross_proceeds_inr:.2f}" if detail.gross_proceeds_inr > 0 else "0.00"  # Sale proceeds
+            ]
+            
+            csv_data.append(row)
+        
+        logger.debug(f"Created {len(csv_data)} data rows for FA declaration")
+        return csv_data

@@ -439,11 +439,17 @@ def calculate_rsu(
     is_flag=True,
     help="Validate data files before starting calculations to catch issues early.",
 )
+@click.option(
+    "--export-fa-csv",
+    is_flag=True,
+    help="Generate FA declaration CSV file ready for import into tax filing software using template format.",
+)
 def calculate_fa(
     calendar_year: Optional[int],
     detailed: bool,
     output_format: str,
     validate_first: bool,
+    export_fa_csv: bool,
 ) -> None:
     """Calculate Foreign Assets declaration data for the specified calendar year.
     
@@ -451,11 +457,13 @@ def calculate_fa(
     - Peak balance calculations for FA declaration requirements (₹2 lakh threshold)
     - Year-end equity valuations using market prices and exchange rates
     - Complete compliance analysis for Indian tax requirements
+    - FA declaration CSV export ready for tax software import
     
     Examples:
         equitywise calculate-fa --calendar-year 2024
         equitywise calculate-fa --detailed --output-format both
-        equitywise calculate-fa --validate-first
+        equitywise calculate-fa --calendar-year 2024 --export-fa-csv
+        equitywise calculate-fa --validate-first --export-fa-csv
     """
     console.print(Panel.fit(
         Text("Foreign Assets Calculation", style="bold purple"),
@@ -557,6 +565,25 @@ def calculate_fa(
                 except Exception as e:
                     _handle_report_generation_error(e, "FA", "CSV")
                     logger.error(f"CSV report generation error: {e}")
+                    
+            # Generate FA declaration CSV if requested
+            if export_fa_csv:
+                try:
+                    console.print("\n📋 [bold green]Generating FA Declaration CSV for Tax Forms...[/bold green]")
+                    csv_reporter = CSVReporter()
+                    summary = list(results.year_summaries.values())[0] if results.year_summaries else None
+                    if summary:
+                        fa_csv_file = csv_reporter.generate_fa_declaration_csv(
+                            summary=summary,
+                            calendar_year=str(calendar_year),
+                            template_path=settings.fa_declaration_template_path
+                        )
+                        console.print(f"   ✅ FA Declaration CSV saved: [cyan]{fa_csv_file}[/cyan]")
+                        console.print(f"   📊 [dim]{len(summary.vest_wise_details)} vest-wise entries ready for tax software import[/dim]")
+                        console.print(f"   💰 [dim]Total closing value: ₹{summary.closing_balance_inr:,.2f}[/dim]")
+                except Exception as e:
+                    _handle_report_generation_error(e, "FA Declaration", "CSV")
+                    logger.error(f"FA Declaration CSV generation error: {e}")
         else:
             # Multi-year calculation with progress indicator
             with Progress(
