@@ -433,26 +433,33 @@ class CSVReporter:
         Returns:
             List of data rows for CSV export
         """
+        from equitywise.config.settings import settings
         csv_data = []
         
+        # Get ITR portal country code for USA
+        country_code = settings.get_itr_country_code("United States of America")
+        
+        # Clean address - remove quotes and commas for ITR portal compatibility
+        clean_address = "345 Park Avenue San Jose CA"
+        
         for detail in vest_wise_details:
-            # Standard row data
+            # ITR Portal compatible row data
             row = [
-                "United States of America",  # Country/Region name
-                "United States of America (US)",  # Country Name and Code
+                country_code,  # Country/Region name (ITR code)
+                country_code,  # Country Name and Code (same ITR code)
                 "Adobe Inc.",  # Name of entity
-                "345 Park Avenue, San Jose, CA 95110-2704, United States",  # Address of entity
+                clean_address,  # Address of entity (no quotes/commas)
                 "95110",  # ZIP Code
                 "Listed Company",  # Nature of entity
-                detail.vest_date.strftime("%d/%m/%Y"),  # Date of acquiring the interest
-                f"{detail.initial_value_inr:.2f}",  # Initial value of the investment
-                f"{detail.peak_value_inr:.2f}",  # Peak value during the Period
-                f"{detail.closing_value_inr:.2f}",  # Closing balance
-                "0.00",  # Total gross amount paid/credited during the period (vesting is non-cash)
-                f"{detail.gross_proceeds_inr:.2f}" if detail.gross_proceeds_inr > 0 else "0.00"  # Sale proceeds
+                detail.vest_date.strftime("%d-%m-%Y"),  # Date of acquiring the interest (DD-MM-YYYY)
+                str(int(round(detail.initial_value_inr))),  # Initial value (integer)
+                str(int(round(detail.peak_value_inr))),  # Peak value (integer)
+                str(int(round(detail.closing_value_inr))),  # Closing balance (integer)
+                "0",  # Total gross amount paid/credited (integer)
+                str(int(round(detail.gross_proceeds_inr))) if detail.gross_proceeds_inr > 0 else "0"  # Sale proceeds (integer)
             ]
             
             csv_data.append(row)
         
-        logger.debug(f"Created {len(csv_data)} data rows for FA declaration")
+        logger.debug(f"Created {len(csv_data)} data rows for FA declaration with ITR portal formatting")
         return csv_data

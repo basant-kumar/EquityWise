@@ -513,6 +513,46 @@ class Settings(BaseSettings):
                 
         return all_valid
     
+    # ITR Portal Country Code Mapping
+    itr_country_codes: dict = Field(
+        default={
+            "United States of America": "2",
+            "United Kingdom": "3", 
+            "Canada": "4",
+            "Australia": "5",
+            "Germany": "6",
+            "France": "7",
+            "Japan": "8",
+            "Singapore": "9",
+            "Hong Kong": "10",
+            # Add more countries as needed
+        },
+        description="""Country code mapping for ITR portal FA declarations.
+        
+        The ITR portal requires specific numeric codes for countries instead of full names.
+        For both 'Country/Region name' and 'Country Name and Code' columns, use the same numeric code.
+        
+        Common codes:
+        - United States of America: 2
+        - United Kingdom: 3
+        - Canada: 4
+        - Australia: 5
+        
+        Reference: ITR Portal Schedule FA guidelines
+        """
+    )
+    
+    def get_itr_country_code(self, country_name: str) -> str:
+        """Get ITR portal country code for a country name.
+        
+        Args:
+            country_name: Full country name
+            
+        Returns:
+            ITR portal country code (numeric string)
+        """
+        return self.itr_country_codes.get(country_name, "2")  # Default to USA
+    
     model_config = ConfigDict(
         env_file=".env",
         env_prefix="RSU_FA_",
