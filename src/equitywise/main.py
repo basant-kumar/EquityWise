@@ -806,14 +806,38 @@ def _display_rsu_summary_table(results, console) -> None:
         "Income from vesting (treated as salary income)"
     )
     
-    # Color-code capital gains
-    capital_gains_color = "red" if results.total_capital_gains_inr < 0 else "green"
-    capital_gains_text = f"[{capital_gains_color}]₹{results.total_capital_gains_inr:,.2f}[/{capital_gains_color}]"
+    # Total purchase amount (cost basis of sold shares)
+    summary_table.add_row(
+        "Total Purchase Amount",
+        f"₹{results.total_cost_basis_inr:,.2f}",
+        "Cost basis of all shares sold in financial year"
+    )
+    
+    # Total sold amount (sale proceeds)
+    summary_table.add_row(
+        "Total Sold Amount",
+        f"₹{results.total_sale_proceeds_inr:,.2f}",
+        "Sale proceeds from all shares sold in financial year"
+    )
+    
+    # Short-term capital gains
+    short_term_color = "red" if results.short_term_gains_inr < 0 else "green"
+    short_term_text = f"[{short_term_color}]₹{results.short_term_gains_inr:,.2f}[/{short_term_color}]"
     
     summary_table.add_row(
-        "Capital Gains (Sales)",
-        capital_gains_text,
-        "Gains/losses from share sales"
+        "Capital Gain (Short-term)",
+        short_term_text,
+        "Short-term capital gains (taxed as salary income)"
+    )
+    
+    # Long-term capital gains  
+    long_term_color = "red" if results.long_term_gains_inr < 0 else "green"
+    long_term_text = f"[{long_term_color}]₹{results.long_term_gains_inr:,.2f}[/{long_term_color}]"
+    
+    summary_table.add_row(
+        "Capital Gain (Long-term)",
+        long_term_text,
+        "Long-term capital gains (10% tax + cess)"
     )
     
     # Color-code net position

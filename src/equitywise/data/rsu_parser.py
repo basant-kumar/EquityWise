@@ -196,9 +196,19 @@ class RSUParser:
             # This handles cases where there are multiple numbers (like grant price, then quantity)
             quantity = None
             for i in range(date_index - 1, 1, -1):  # Search backwards from date
-                if parts[i].isdigit() and int(parts[i]) > 0:  # Skip zero values
-                    quantity = int(parts[i])
-                    break
+                candidate = parts[i]
+                # Skip "NA" and "$" values
+                if candidate in ['NA', '$', '']:
+                    continue
+                    
+                try:
+                    # Try to parse as float first, then convert to int
+                    float_val = float(candidate.replace(',', '').replace('$', ''))
+                    if float_val > 0:  # Skip zero values
+                        quantity = int(float_val)
+                        break
+                except (ValueError, AttributeError):
+                    continue
                     
             if quantity is None:
                 logger.debug(f"Could not find valid quantity in RSU line: {parts}")

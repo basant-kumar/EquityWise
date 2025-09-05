@@ -270,6 +270,7 @@ class ExcelReporter:
                 'Sale Proceeds (USD)': f"${event.sale_proceeds_usd:.2f}",
                 'Sale Proceeds (INR)': f"₹{event.sale_proceeds_inr:.2f}",
                 'Cost Basis (USD)': f"${event.cost_basis_usd:.2f}",
+                'Cost Basis (INR)': f"₹{event.cost_basis_inr:.2f}",
                 'Capital Gain (USD)': f"${event.capital_gain_usd:.2f}",
                 'Capital Gain (INR)': f"₹{event.capital_gain_inr:.2f}",
                 'Holding Period': f"{event.holding_period_days} days",
@@ -280,7 +281,7 @@ class ExcelReporter:
         df = pd.DataFrame(sale_data)
         
         # Add title
-        ws.merge_cells('A1:N1')
+        ws.merge_cells('A1:O1')
         title_cell = ws['A1']
         title_cell.value = "RSU Sale Events"
         title_cell.font = Font(bold=True, size=14, color="FFFFFF")

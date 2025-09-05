@@ -196,6 +196,7 @@ class CSVReporter:
                 'Sale Proceeds (USD)': f"{event.sale_proceeds_usd:.2f}",
                 'Sale Proceeds (INR)': f"{event.sale_proceeds_inr:.2f}",
                 'Cost Basis (USD)': f"{event.cost_basis_usd:.2f}",
+                'Cost Basis (INR)': f"{event.cost_basis_inr:.2f}",
                 'Capital Gain (USD)': f"{event.capital_gain_usd:.2f}",
                 'Capital Gain (INR)': f"{event.capital_gain_inr:.2f}",
                 'Holding Period (Days)': f"{event.holding_period_days}",

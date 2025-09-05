@@ -45,6 +45,12 @@ class RSUCalculationResults(BaseModel):
     total_capital_gains_inr: float = 0.0
     net_position_inr: float = 0.0
     
+    # Additional Summary Fields for Enhanced Display
+    total_cost_basis_inr: float = 0.0  # Total purchase amount of sold shares
+    total_sale_proceeds_inr: float = 0.0  # Total sold amount (proceeds from sales)
+    short_term_gains_inr: float = 0.0  # Short-term capital gains
+    long_term_gains_inr: float = 0.0  # Long-term capital gains
+    
     @property
     def available_financial_years(self) -> List[str]:
         """Get list of financial years with RSU activity."""
@@ -293,6 +299,12 @@ class RSUService:
         # Formula 4: Calculate total financial impact (not a single tax category)
         net_position_inr = total_taxable_gain_inr + total_capital_gains_inr
         
+        # Additional aggregated metrics for enhanced summary display
+        total_cost_basis_inr = sum(s.cost_basis_inr for s in filtered_sales)
+        total_sale_proceeds_inr = sum(s.sale_proceeds_inr for s in filtered_sales)
+        short_term_gains_inr = sum(s.capital_gain_inr for s in filtered_sales if s.gain_type == "Short-term")
+        long_term_gains_inr = sum(s.capital_gain_inr for s in filtered_sales if s.gain_type == "Long-term")
+        
         # Create results
         results = RSUCalculationResults(
             calculation_date=Date.today(),
@@ -308,7 +320,11 @@ class RSUService:
             total_sold_quantity=total_sold,
             total_taxable_gain_inr=total_taxable_gain_inr,
             total_capital_gains_inr=total_capital_gains_inr,
-            net_position_inr=net_position_inr
+            net_position_inr=net_position_inr,
+            total_cost_basis_inr=total_cost_basis_inr,
+            total_sale_proceeds_inr=total_sale_proceeds_inr,
+            short_term_gains_inr=short_term_gains_inr,
+            long_term_gains_inr=long_term_gains_inr
         )
         
         # Log summary

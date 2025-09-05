@@ -363,7 +363,14 @@ uv run equitywise calculate-fa \
 
 **CSV Features:**
 - **Ready-to-import format**: Matches standard FA declaration form templates
+- **ITR Portal Compatible**: Formatted specifically for Indian Income Tax filing
 - **Vest-wise entries**: Each vesting event tracked separately
+
+**ITR Portal Format Compliance:**
+- ✅ **Country Codes**: Uses numeric codes (USA = "2") for both country columns
+- ✅ **Clean Address**: No quotes or commas in address field for portal compatibility
+- ✅ **Integer Currency**: All amounts rounded to whole numbers (no decimals)
+- ✅ **Date Format**: DD-MM-YYYY format as required by ITR portal
 - **Pre-filled entity data**: Adobe Inc. details automatically included
 - **Comprehensive values**: Initial, peak, closing, and sale proceeds for each vest
 

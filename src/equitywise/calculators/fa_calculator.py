@@ -904,9 +904,10 @@ class FACalculator:
             logger.error(f"Error processing GL records: {e}")
             raise
         
-        # Filter vests to only include those relevant to the current calendar year:
-        # 1. Vests that still have shares remaining at the END of current calendar year, OR
-        # 2. Vests that had sales activity during the current calendar year
+        # Filter vests to include those relevant for FA declaration in current calendar year:
+        # 1. Vests from BEFORE current year that are still held (not fully sold by year-end), OR
+        # 2. Vests that occurred DURING the current calendar year (regardless of holding/sold), OR  
+        # 3. Vests that had sales activity during the current calendar year (regardless of vest date)
         try:
             relevant_vests = []
             for vest in rsu_records:
@@ -923,15 +924,26 @@ class FACalculator:
                     
                     current_year_sales = sold_shares_by_vest_current_year.get(vest_key, 0.0)
                     shares_remaining_at_year_end = vest.quantity - sales_through_current_year
+                    vested_in_current_year = year_start <= vest.vesting_date <= year_end
+                    vested_before_current_year = vest.vesting_date < year_start
                     
-                    # Include if either:
-                    # 1. Has shares remaining at end of current year, OR
-                    # 2. Had sales activity in current year (even if now fully sold)
-                    if shares_remaining_at_year_end > 0 or current_year_sales > 0:
+                    # Include in FA declaration if any of:
+                    # 1. Vested before CY AND still holding at year end, OR
+                    # 2. Vested in CY (regardless of holding/sold), OR
+                    # 3. Sold in CY (regardless of vest date)
+                    if (vested_before_current_year and shares_remaining_at_year_end > 0) or vested_in_current_year or current_year_sales > 0:
                         relevant_vests.append(vest)
-                        logger.debug(f"Including vest {vest.grant_number} ({vest.vesting_date}): remaining at year-end={shares_remaining_at_year_end:.2f}, CY sales={current_year_sales:.2f}")
+                        
+                        if vested_before_current_year and shares_remaining_at_year_end > 0:
+                            reason = "pre-CY vest still held"
+                        elif vested_in_current_year:
+                            reason = "vested in CY"
+                        else:
+                            reason = "sold in CY"
+                        
+                        logger.debug(f"Including vest {vest.grant_number} ({vest.vesting_date}): {reason}, remaining={shares_remaining_at_year_end:.2f}, CY sales={current_year_sales:.2f}")
                     else:
-                        logger.debug(f"Excluding vest {vest.grant_number} ({vest.vesting_date}): fully sold by end of current year")
+                        logger.debug(f"Excluding vest {vest.grant_number} ({vest.vesting_date}): no relevance to CY {calendar_year}")
             
             logger.debug(f"Found {len(relevant_vests)} relevant vests for {calendar_year} (filtered from {len([v for v in rsu_records if v.vesting_date <= year_end])} total)")
         except Exception as e:
