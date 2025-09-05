@@ -285,12 +285,15 @@ class RSUParser:
             # Parse date with flexible format handling multiple variations
             vesting_date = None
             date_formats = [
-                '%d-%m-%Y',     # 15-04-2020
-                '%d/%m/%Y',     # 15/04/2020
-                '%d-%b-%y',     # 15-Oct-20 
-                '%d-%B-%y',     # 15-October-20
-                '%d/%b/%Y',     # 15/Oct/2020
-                '%d-%m-%y'      # 15-04-20
+                '%d-%m-%Y',     # 15-04-2020 (DD-MM-YYYY)
+                '%d/%m/%Y',     # 15/04/2020 (DD/MM/YYYY)
+                '%m/%d/%Y',     # 12/29/2023 (MM/DD/YYYY) - American format
+                '%d-%b-%y',     # 15-Oct-20 (DD-Mon-YY)
+                '%d-%B-%y',     # 15-October-20 (DD-Month-YY)
+                '%d/%b/%Y',     # 15/Oct/2020 (DD/Mon/YYYY)
+                '%d-%m-%y',     # 15-04-20 (DD-MM-YY)
+                '%m-%d-%Y',     # 12-29-2023 (MM-DD-YYYY) - American format with dashes
+                '%Y-%m-%d'      # 2023-12-29 (YYYY-MM-DD) - ISO format
             ]
             
             for date_format in date_formats:
@@ -334,12 +337,15 @@ class RSUParser:
             raise FileNotFoundError(f"RSU PDF not found: {self.pdf_path}")
         
         records = []
+        all_text = ""  # Collect all text for validation
         
         with pdfplumber.open(self.pdf_path) as pdf:
             for page in pdf.pages:
                 text = page.extract_text()
                 if not text:
                     continue
+                
+                all_text += text + "\n"  # Accumulate text for validation
                     
                 # Extract employee info from first page
                 if not self.employee_info:
@@ -363,7 +369,36 @@ class RSUParser:
                                 continue
         
         logger.info(f"Successfully parsed {len(records)} equity records from PDF")
+        
+        # Validation: Check if we missed any entries
+        self._validate_parsing_completeness(all_text, len(records))
+        
         return records
+    
+    def _validate_parsing_completeness(self, pdf_text: str, parsed_count: int) -> None:
+        """Validate that we haven't missed any RSU/ESPP entries during parsing"""
+        lines = pdf_text.split('\n')
+        expected_equity_lines = []
+        
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if line.startswith('RSU ') or line.startswith('ESPP '):
+                expected_equity_lines.append((line_num, line[:100] + '...' if len(line) > 100 else line))
+        
+        expected_count = len(expected_equity_lines)
+        
+        if parsed_count != expected_count:
+            logger.warning(f"⚠️  PARSING MISMATCH: Expected {expected_count} entries, but parsed {parsed_count}")
+            logger.warning(f"📊 Expected equity lines found in PDF:")
+            for line_num, line_preview in expected_equity_lines:
+                logger.warning(f"   Line {line_num}: {line_preview}")
+            
+            missing_count = expected_count - parsed_count
+            if missing_count > 0:
+                logger.error(f"❌ {missing_count} entries were NOT parsed successfully!")
+                logger.error(f"💡 This indicates parsing logic needs improvement for this PDF format")
+        else:
+            logger.info(f"✅ Parsing validation passed: {parsed_count}/{expected_count} entries parsed successfully")
     
     def to_dataframe(self) -> pd.DataFrame:
         """Convert extracted vesting data to pandas DataFrame"""
