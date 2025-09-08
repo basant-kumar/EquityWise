@@ -275,6 +275,9 @@ class Settings(BaseSettings):
         for pattern in ["*.xlsx", "*.xls", "*.XLSX", "*.XLS"]:
             excel_files.extend(self.gl_statements_dir.glob(pattern))
         
+        # Filter out Excel temporary files (starting with ~$)
+        excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+        
         # Sort by filename for consistent processing order
         excel_files.sort(key=lambda x: x.name)
         
@@ -298,6 +301,9 @@ class Settings(BaseSettings):
         for pattern in ["*.xlsx", "*.xls", "*.XLSX", "*.XLS"]:
             excel_files.extend(self.benefit_history_dir.glob(pattern))
         
+        # Filter out Excel temporary files (starting with ~$)
+        excel_files = [f for f in excel_files if not f.name.startswith('~$')]
+        
         # Sort by filename for consistent processing order
         excel_files.sort(key=lambda x: x.name)
         
@@ -320,6 +326,9 @@ class Settings(BaseSettings):
         excel_files = []
         for pattern in ["*.xlsx", "*.xls", "*.XLSX", "*.XLS", "*.xlsm", "*.XLSM"]:
             excel_files.extend(self.bank_statements_dir.glob(pattern))
+        
+        # Filter out Excel temporary files (starting with ~$)
+        excel_files = [f for f in excel_files if not f.name.startswith('~$')]
         
         # Sort by filename for consistent processing order
         excel_files.sort(key=lambda x: x.name)

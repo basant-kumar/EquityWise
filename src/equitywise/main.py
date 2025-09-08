@@ -36,6 +36,7 @@ License: MIT
 import sys
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 import click
 from loguru import logger
@@ -51,6 +52,7 @@ from equitywise.calculators.rsu_service import RSUService
 from equitywise.calculators.fa_service import FAService
 from equitywise.data.loaders import DataValidator
 from equitywise.reports import ExcelReporter, CSVReporter
+from equitywise.validation import CrossValidator, ValidationResult
 
 
 console = Console()
@@ -173,11 +175,17 @@ def cli(ctx: click.Context, log_level: str, log_file: Optional[str]) -> None:
     is_flag=True,
     help="Validate data files before starting calculations to catch issues early.",
 )
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Enable comprehensive cross-validation between data sources and calculation methods.",
+)
 def calculate_rsu(
     financial_year: Optional[str],
     detailed: bool,
     output_format: str,
     validate_first: bool,
+    validate: bool,
 ) -> None:
     """Calculate RSU gain/loss for the specified financial year.
     
@@ -402,6 +410,97 @@ def calculate_rsu(
                         _handle_report_generation_error(e, "RSU", "CSV")
                         logger.error(f"CSV report generation error: {e}")
         
+        # Perform comprehensive validation if requested
+        if validate:
+            console.print("\n")  # Add spacing
+            console.print(Panel.fit(
+                Text("Cross-Validation in Progress", style="bold yellow"),
+                title="[bold green]Validation[/bold green]",
+                border_style="yellow"
+            ))
+            
+            try:
+                # Initialize validator
+                validator = CrossValidator()
+                
+                # Get ALL events for validation (across all financial years)
+                all_events_result = rsu_service.calculate_rsu_for_fy(
+                    financial_year=None,  # Get all years
+                    detailed=True         # Include event details
+                )
+                
+                # Prepare RSU data for validation
+                # Note: Pass ALL events from all years, validation will filter by FY
+                rsu_data = {
+                    "vesting_events": all_events_result.vesting_events,  # All events from all years
+                    "sale_events": all_events_result.sale_events,        # All events from all years  
+                    "summary": results                                    # FY-specific summary
+                }
+                
+                # Get raw data for cross-validation
+                from equitywise.data.loaders import BenefitHistoryLoader, GLStatementLoader
+                
+                # Load BenefitHistory data
+                benefit_history_records = []
+                if settings.benefit_history_path.exists():
+                    benefit_loader = BenefitHistoryLoader(settings.benefit_history_path)
+                    benefit_history_records = benefit_loader.get_validated_records()
+                
+                # Load G&L statement data  
+                gl_records = []
+                for gl_path in settings.gl_statements_paths:
+                    if gl_path.exists():
+                        gl_loader = GLStatementLoader(gl_path)
+                        gl_file_records = gl_loader.get_validated_records()
+                        gl_records.extend(gl_file_records)
+                
+                # Determine overlap year based on financial_year
+                overlap_year = None
+                if financial_year:
+                    # Extract year from FY format (e.g., FY24-25 -> 2024)
+                    try:
+                        if financial_year.startswith("FY") and "-" in financial_year:
+                            year_part = financial_year[2:4]  # Get "24" from "FY24-25"
+                            overlap_year = f"20{year_part}"  # Convert to "2024"
+                    except:
+                        pass
+                
+                # Perform validation
+                validation_result = validator.validate_comprehensive(
+                    rsu_data=rsu_data,
+                    benefit_history_records=benefit_history_records,
+                    gl_records=gl_records,
+                    overlap_year=overlap_year,
+                    financial_year=financial_year
+                )
+                
+                # Display validation results
+                if validation_result.is_valid:
+                    console.print("\n[green]✅ Comprehensive validation PASSED![/green]")
+                    console.print(f"[dim]• {validation_result.get_warning_count()} warnings[/dim]")
+                else:
+                    console.print("\n[red]❌ Comprehensive validation FAILED![/red]")
+                    console.print(f"[red]• {validation_result.get_error_count()} errors[/red]")
+                    console.print(f"[yellow]• {validation_result.get_warning_count()} warnings[/yellow]")
+                
+                # Show detailed validation report if there are issues
+                if not validation_result.is_valid or validation_result.get_warning_count() > 0:
+                    console.print("\n[bold yellow]📋 Validation Report:[/bold yellow]")
+                    validation_report = validator.generate_validation_report(validation_result)
+                    console.print(validation_report)
+                    
+                    # Save validation report to file
+                    from pathlib import Path
+                    output_dir = Path("output")
+                    output_dir.mkdir(exist_ok=True)
+                    validation_file = output_dir / f"validation_report_RSU_{financial_year or 'all'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    validation_file.write_text(validation_report)
+                    console.print(f"\n[cyan]📄 Validation report saved: {validation_file}[/cyan]")
+                    
+            except Exception as e:
+                console.print(f"\n[red]❌ Validation failed: {e}[/red]")
+                logger.error(f"Cross-validation error: {e}")
+        
         # Ensure all Rich output is complete before logging
         console.print("")  # Force flush Rich output
         logger.info(f"RSU calculation completed successfully: ₹{results.net_position_inr:,.2f} net position")
@@ -444,12 +543,18 @@ def calculate_rsu(
     is_flag=True,
     help="Generate FA declaration CSV file ready for import into tax filing software using template format.",
 )
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Enable comprehensive cross-validation between data sources and calculation methods.",
+)
 def calculate_fa(
     calendar_year: Optional[int],
     detailed: bool,
     output_format: str,
     validate_first: bool,
     export_fa_csv: bool,
+    validate: bool,
 ) -> None:
     """Calculate Foreign Assets declaration data for the specified calendar year.
     
@@ -528,6 +633,73 @@ def calculate_fa(
             
             _display_single_year_results(results, detailed, console)
             
+            # Perform comprehensive validation if requested
+            if validate:
+                console.print("\n")  # Add spacing
+                console.print(Panel.fit(
+                    Text("Cross-Validation in Progress", style="bold yellow"),
+                    title="[bold green]Validation[/bold green]",
+                    border_style="yellow"
+                ))
+                
+                try:
+                    # Initialize validator
+                    validator = CrossValidator()
+                    
+                    # Prepare FA data for validation
+                    summary = list(results.year_summaries.values())[0] if results.year_summaries else None
+                    fa_data = {
+                        "summary": summary,
+                        "equity_holdings": results.equity_holdings,
+                        "vest_wise_details": summary.vest_wise_details if summary else []
+                    }
+                    
+                    # Get raw data for cross-validation
+                    from equitywise.data.loaders import BenefitHistoryLoader
+                    
+                    # Load BenefitHistory data
+                    benefit_history_records = []
+                    if settings.benefit_history_path.exists():
+                        benefit_loader = BenefitHistoryLoader(settings.benefit_history_path)
+                        benefit_history_records = benefit_loader.get_validated_records()
+                    
+                    # Use calendar_year for overlap validation
+                    overlap_year = str(calendar_year) if calendar_year else None
+                    
+                    # Perform validation
+                    validation_result = validator.validate_comprehensive(
+                        fa_data=fa_data,
+                        benefit_history_records=benefit_history_records,
+                        overlap_year=overlap_year
+                    )
+                    
+                    # Display validation results
+                    if validation_result.is_valid:
+                        console.print("\n[green]✅ Comprehensive validation PASSED![/green]")
+                        console.print(f"[dim]• {validation_result.get_warning_count()} warnings[/dim]")
+                    else:
+                        console.print("\n[red]❌ Comprehensive validation FAILED![/red]")
+                        console.print(f"[red]• {validation_result.get_error_count()} errors[/red]")
+                        console.print(f"[yellow]• {validation_result.get_warning_count()} warnings[/yellow]")
+                    
+                    # Show detailed validation report if there are issues
+                    if not validation_result.is_valid or validation_result.get_warning_count() > 0:
+                        console.print("\n[bold yellow]📋 Validation Report:[/bold yellow]")
+                        validation_report = validator.generate_validation_report(validation_result)
+                        console.print(validation_report)
+                        
+                        # Save validation report to file
+                        from pathlib import Path
+                        output_dir = Path("output")
+                        output_dir.mkdir(exist_ok=True)
+                        validation_file = output_dir / f"validation_report_FA_{calendar_year}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                        validation_file.write_text(validation_report)
+                        console.print(f"\n[cyan]📄 Validation report saved: {validation_file}[/cyan]")
+                        
+                except Exception as e:
+                    console.print(f"\n[red]❌ Validation failed: {e}[/red]")
+                    logger.error(f"Cross-validation error: {e}")
+            
             # Generate reports for single year
             if output_format in ["excel", "both"]:
                 try:
@@ -599,6 +771,75 @@ def calculate_fa(
                 progress.update(calc_task, advance=100, description="[green]Multi-year FA calculation complete")
             
             _display_multi_year_summary_table(results, console, detailed)
+            
+            # Perform comprehensive validation if requested (multi-year)
+            if validate:
+                console.print("\n")  # Add spacing
+                console.print(Panel.fit(
+                    Text("Cross-Validation in Progress (Multi-Year)", style="bold yellow"),
+                    title="[bold green]Validation[/bold green]",
+                    border_style="yellow"
+                ))
+                
+                try:
+                    # Initialize validator
+                    validator = CrossValidator()
+                    
+                    # Prepare multi-year FA data for validation (use most recent year for overlap)
+                    latest_year = max(results.year_summaries.keys()) if results.year_summaries else None
+                    latest_summary = results.year_summaries.get(latest_year) if latest_year else None
+                    
+                    fa_data = {
+                        "summary": latest_summary,
+                        "equity_holdings": results.equity_holdings,
+                        "vest_wise_details": latest_summary.vest_wise_details if latest_summary else []
+                    }
+                    
+                    # Get raw data for cross-validation  
+                    from equitywise.data.loaders import BenefitHistoryLoader
+                    
+                    # Load BenefitHistory data
+                    benefit_history_records = []
+                    if settings.benefit_history_path.exists():
+                        benefit_loader = BenefitHistoryLoader(settings.benefit_history_path)
+                        benefit_history_records = benefit_loader.get_validated_records()
+                    
+                    # Use latest year for overlap validation
+                    overlap_year = latest_year if latest_year else None
+                    
+                    # Perform validation
+                    validation_result = validator.validate_comprehensive(
+                        fa_data=fa_data,
+                        benefit_history_records=benefit_history_records,
+                        overlap_year=overlap_year
+                    )
+                    
+                    # Display validation results
+                    if validation_result.is_valid:
+                        console.print("\n[green]✅ Comprehensive validation PASSED![/green]")
+                        console.print(f"[dim]• {validation_result.get_warning_count()} warnings[/dim]")
+                    else:
+                        console.print("\n[red]❌ Comprehensive validation FAILED![/red]")
+                        console.print(f"[red]• {validation_result.get_error_count()} errors[/red]")
+                        console.print(f"[yellow]• {validation_result.get_warning_count()} warnings[/yellow]")
+                    
+                    # Show detailed validation report if there are issues
+                    if not validation_result.is_valid or validation_result.get_warning_count() > 0:
+                        console.print("\n[bold yellow]📋 Validation Report:[/bold yellow]")
+                        validation_report = validator.generate_validation_report(validation_result)
+                        console.print(validation_report)
+                        
+                        # Save validation report to file
+                        from pathlib import Path
+                        output_dir = Path("output")
+                        output_dir.mkdir(exist_ok=True)
+                        validation_file = output_dir / f"validation_report_FA_multi_year_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                        validation_file.write_text(validation_report)
+                        console.print(f"\n[cyan]📄 Validation report saved: {validation_file}[/cyan]")
+                        
+                except Exception as e:
+                    console.print(f"\n[red]❌ Validation failed: {e}[/red]")
+                    logger.error(f"Cross-validation error: {e}")
             
             # Generate reports for all years
             if output_format in ["excel", "both"]:
@@ -777,44 +1018,61 @@ def _display_rsu_summary_table(results, console) -> None:
     """Display RSU calculation summary in a structured table format."""
     from rich.table import Table
     
-    # Create summary table with fixed column widths for proper terminal display
-    summary_table = Table(
-        title="📊 RSU Calculation Summary",
+    # Create vesting details table
+    vesting_table = Table(
+        title="🔸 RSU Vesting Details",
         show_header=True, 
-        header_style="bold cyan"
+        header_style="bold green"
     )
     
     # Fixed columns with proper truncation for terminal readability
-    summary_table.add_column("Metric", style="cyan", width=20)
-    summary_table.add_column("Value", style="white", justify="right", width=18)
-    summary_table.add_column("Description", style="dim", width=65, overflow="ellipsis")
+    vesting_table.add_column("Metric", style="cyan", width=20)
+    vesting_table.add_column("Value", style="white", justify="right", width=18)
+    vesting_table.add_column("Description", style="dim", width=65, overflow="ellipsis")
     
-    # Add summary rows
-    summary_table.add_row(
+    # Add vesting summary rows
+    vesting_table.add_row(
         "Total Vested Shares",
         f"{results.total_vested_quantity:,.0f}",
         "RSU shares vested in financial year"
     )
-    summary_table.add_row(
-        "Total Sold Shares", 
-        f"{results.total_sold_quantity:,.0f}",
-        "RSU shares sold in financial year"
-    )
-    summary_table.add_row(
+    vesting_table.add_row(
         "Vesting Income",
         f"₹{results.total_taxable_gain_inr:,.2f}",
         "Income from vesting (treated as salary income)"
     )
     
+    console.print("\n")
+    console.print(vesting_table)
+    
+    # Create sold details table
+    sold_table = Table(
+        title="💰 RSU Sale Details",
+        show_header=True, 
+        header_style="bold yellow"
+    )
+    
+    # Fixed columns with proper truncation for terminal readability
+    sold_table.add_column("Metric", style="cyan", width=20)
+    sold_table.add_column("Value", style="white", justify="right", width=18)
+    sold_table.add_column("Description", style="dim", width=65, overflow="ellipsis")
+    
+    # Add sale summary rows
+    sold_table.add_row(
+        "Total Sold Shares", 
+        f"{results.total_sold_quantity:,.0f}",
+        "RSU shares sold in financial year"
+    )
+    
     # Total purchase amount (cost basis of sold shares)
-    summary_table.add_row(
+    sold_table.add_row(
         "Total Purchase Amount",
         f"₹{results.total_cost_basis_inr:,.2f}",
         "Cost basis of all shares sold in financial year"
     )
     
     # Total sold amount (sale proceeds)
-    summary_table.add_row(
+    sold_table.add_row(
         "Total Sold Amount",
         f"₹{results.total_sale_proceeds_inr:,.2f}",
         "Sale proceeds from all shares sold in financial year"
@@ -824,7 +1082,7 @@ def _display_rsu_summary_table(results, console) -> None:
     short_term_color = "red" if results.short_term_gains_inr < 0 else "green"
     short_term_text = f"[{short_term_color}]₹{results.short_term_gains_inr:,.2f}[/{short_term_color}]"
     
-    summary_table.add_row(
+    sold_table.add_row(
         "Capital Gain (Short-term)",
         short_term_text,
         "Short-term capital gains (taxed as salary income)"
@@ -834,24 +1092,14 @@ def _display_rsu_summary_table(results, console) -> None:
     long_term_color = "red" if results.long_term_gains_inr < 0 else "green"
     long_term_text = f"[{long_term_color}]₹{results.long_term_gains_inr:,.2f}[/{long_term_color}]"
     
-    summary_table.add_row(
+    sold_table.add_row(
         "Capital Gain (Long-term)",
         long_term_text,
         "Long-term capital gains (10% tax + cess)"
     )
     
-    # Color-code net position
-    net_color = "red" if results.net_position_inr < 0 else "green"
-    net_text = f"[{net_color}]₹{results.net_position_inr:,.2f}[/{net_color}]"
-    
-    summary_table.add_row(
-        "[bold]Net Position[/bold]",
-        f"[bold]{net_text}[/bold]",
-        "[bold]Total financial impact from RSU activities[/bold]"
-    )
-    
     console.print("\n")
-    console.print(summary_table)
+    console.print(sold_table)
 
 
 def _display_vesting_events_table(vesting_events, console) -> None:

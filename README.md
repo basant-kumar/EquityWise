@@ -12,8 +12,9 @@ EquityWise is a comprehensive tool for processing E*Trade and Excelity data to c
 
 - **RSU & ESPP Tax Calculations**: Accurately compute capital gains/losses on equity sales
 - **Foreign Assets Compliance**: Generate FA declaration data for Indian tax filing
+- **Comprehensive Data Validation**: Cross-validate data consistency between E*Trade, Excelity, and G&L statements
 - **CSV Export for Tax Forms**: Direct CSV export for FA declaration form import
-- **Multi-Format Reports**: Professional Excel and CSV reports for tax preparation
+- **Enhanced Excel Reports**: Professional formatting with currency, totals, and dynamic column widths
 - **Bank Reconciliation**: Track equity proceeds and transfer expenses (multi-bank support)
 - **Interactive CLI**: Guided workflows with progress tracking and error recovery
 
@@ -236,6 +237,11 @@ uv run equitywise calculate-rsu \
   --output-format excel \
   --detailed
 
+# Enable comprehensive data validation (recommended)
+uv run equitywise calculate-rsu \
+  --financial-year FY24-25 \
+  --validate
+
 # Interactive mode for guided calculation
 uv run equitywise calculate-rsu --interactive
 ```
@@ -259,6 +265,11 @@ uv run equitywise calculate-fa \
   --as-of-date 2024-12-31 \
   --output-format both
 
+# Enable data validation for FA calculations (recommended)
+uv run equitywise calculate-fa \
+  --calendar-year 2024 \
+  --validate
+
 # Check if FA declaration is required
 uv run equitywise calculate-fa --calendar-year 2024 --check-only
 
@@ -281,6 +292,70 @@ uv run equitywise calculate-fa \
 📊 20 vest-wise entries ready for import
 ```
 
+## 🔍 **Comprehensive Data Validation**
+
+EquityWise includes a powerful validation system that cross-validates data consistency between different sources (BenefitHistory, RSU PDFs, G&L statements) to ensure calculation accuracy.
+
+### Key Validation Features
+
+- **📊 Cross-Data Source Validation**: Compares vesting events across RSU PDFs and BenefitHistory
+- **💰 Sale Transaction Consistency**: Validates sale events between G&L statements and BenefitHistory  
+- **📅 Date Range Overlap Analysis**: Matches FY-based RSU calculations with CY-based FA calculations
+- **🧮 Internal Calculation Consistency**: Verifies summary totals match detailed transaction sums
+- **⚠️ Detailed Error Reporting**: Shows exactly which transactions are missing or inconsistent
+
+### Using Validation
+
+```bash
+# Enable validation for RSU calculations (recommended)
+uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+
+# Enable validation for FA calculations (recommended)  
+uv run equitywise calculate-fa --calendar-year 2024 --validate
+
+# Combined validation with detailed output
+uv run equitywise calculate-rsu --financial-year FY24-25 --validate --detailed
+```
+
+### Sample Validation Output
+
+```
+🔍 Comprehensive Validation Results
+===================================
+
+✅ BenefitHistory vs RSU PDF Consistency: PASSED
+• 12 vesting events validated across data sources
+• All vesting dates and quantities match
+
+✅ BenefitHistory vs G&L Statement Consistency: PASSED  
+• 8 sale transactions validated
+• All sale dates, quantities, and amounts consistent
+
+✅ RSU vs FA Overlap Validation: PASSED
+• Overlapping period: 2024-01-01 to 2024-12-31
+• 3 common transactions validated
+• Total overlap value: ₹2,45,678.90
+
+✅ RSU Internal Consistency: PASSED
+• Vesting income calculation validated
+• Capital gains calculation validated
+
+✅ FA Internal Consistency: PASSED
+• Holdings calculation validated
+• Peak balance calculation validated
+
+✅ Comprehensive validation PASSED!
+• 0 warnings
+```
+
+### Validation Benefits
+
+- **🎯 Accuracy Assurance**: Catch data entry errors and missing transactions
+- **🔗 Data Consistency**: Ensure all data sources are in sync
+- **📋 Audit Trail**: Generate detailed validation reports for tax filing
+- **⏰ Time Saving**: Identify issues early rather than during tax filing
+- **🔒 Confidence**: Know your calculations are based on consistent, verified data
+
 ## 🎛️ **Command Reference**
 
 ### Core Commands
@@ -290,6 +365,9 @@ uv run equitywise calculate-fa \
 # Calculate for specific financial year with Excel output
 uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
 
+# Calculate with comprehensive data validation (recommended)
+uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+
 # Interactive mode with detailed breakdown
 uv run equitywise calculate-rsu --interactive --detailed
 ```
@@ -298,6 +376,9 @@ uv run equitywise calculate-rsu --interactive --detailed
 ```bash
 # Check FA declaration requirement for 2024
 uv run equitywise calculate-fa --calendar-year 2024 --check-only
+
+# Calculate with comprehensive data validation (recommended)
+uv run equitywise calculate-fa --calendar-year 2024 --validate
 
 # Full FA report with detailed holdings
 uv run equitywise calculate-fa --calendar-year 2024 --output-format excel --detailed
@@ -324,9 +405,12 @@ uv run equitywise help-guide --section cli
 ### Common Options
 
 **Output Format Options:**
-- `--output-format excel` - Generate Excel reports (recommended, default)
+- `--output-format excel` - Generate Excel reports with enhanced formatting (recommended, default)
 - `--output-format csv` - Generate CSV files for analysis
 - `--output-format both` - Generate both Excel and CSV
+
+**Data Validation Options:**
+- `--validate` - Enable comprehensive cross-validation between data sources (recommended)
 
 **Date Range Options:**
 - `--financial-year FY24-25` - Indian Financial Year (April 2024 to March 2025)
@@ -346,9 +430,18 @@ uv run equitywise help-guide --section cli
 
 ## 📊 **Report Outputs**
 
-### Excel Reports
-- **RSU_Report_FY24-25.xlsx**: Multi-sheet workbook with summary, transactions, and reconciliation
-- **FA_Report_2024.xlsx**: Foreign Assets declaration data with balance tracking
+### Enhanced Excel Reports
+- **RSU_Report_FY24-25.xlsx**: Multi-sheet workbook with professional formatting
+  - ✨ Proper currency formatting (₹/#,##0.00) instead of text
+  - 📊 Total rows for USD and INR columns
+  - 📐 Dynamic column widths to prevent "######" display
+  - 📝 Wrap text headers for better readability
+  - 📋 Separated vesting and sold transaction details
+
+- **FA_Report_2024.xlsx**: Foreign Assets declaration with enhanced formatting
+  - ✨ Professional currency and number formatting
+  - 📊 Summary totals and subtotals
+  - 📐 Optimal column widths for all data
 
 ### CSV Reports  
 - **RSU_Summary_FY24-25.csv**: Lightweight summary for analysis
@@ -400,8 +493,9 @@ include_formulas = false
 
 ## 🩺 **Data Validation**
 
-The tool includes comprehensive data validation:
+EquityWise includes multiple layers of data validation for maximum accuracy:
 
+### Standard Data Validation
 ```bash
 # Validate all data files
 uv run equitywise validate-data
@@ -411,12 +505,29 @@ uv run equitywise validate-data --file-type benefit-history
 uv run equitywise --log-level DEBUG validate-data
 ```
 
-**Validation Checks:**
+**Basic Validation Checks:**
 - ✅ File format and structure
 - ✅ Required columns present
 - ✅ Date format consistency
 - ✅ Numeric data integrity
 - ✅ Cross-file data consistency
+
+### Comprehensive Cross-Validation
+The `--validate` flag enables advanced validation across all data sources:
+
+```bash
+# Enable cross-validation (recommended for accuracy)
+uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+uv run equitywise calculate-fa --calendar-year 2024 --validate
+```
+
+**Advanced Validation Features:**
+- 📊 **Multi-Source Consistency**: Validates data across BenefitHistory, RSU PDFs, and G&L statements
+- 💰 **Transaction Matching**: Ensures sale events match across different data sources
+- 📅 **Date Range Validation**: Validates overlapping periods between FY and CY calculations  
+- 🧮 **Calculation Verification**: Cross-checks summary totals against detailed transaction sums
+- ⚠️ **Detailed Error Reports**: Identifies exactly which transactions are missing or inconsistent
+- 🎯 **Event Type Accuracy**: Distinguishes between actual sales ("Shares sold") and other events
 
 ## 🚨 **Troubleshooting**
 
@@ -442,6 +553,25 @@ uv run equitywise --log-level DEBUG validate-data
 # The tool uses 7-day fallback window
 # Ensure SBI rates file covers the required date range
 # Check data/reference_data/exchange_rates/Exchange_Reference_Rates.csv for data completeness
+```
+
+**Q: "Excel file format cannot be determined" or "Failed to parse ~$*.xlsx"**
+```bash
+# This occurs when Excel files are open and creating temporary lock files
+# Solution: Close Excel files before running EquityWise, or the tool will automatically skip temp files
+# The tool now automatically filters out Excel temporary files (~$*.xlsx)
+```
+
+**Q: "Validation warnings about missing transactions"**
+```bash
+# Use the validation system to identify data inconsistencies:
+uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+
+# Check that:
+# - BenefitHistory.xlsx is complete and up-to-date
+# - G&L statements contain all sale transactions
+# - RSU PDFs match the financial year being calculated
+# - Event types in BenefitHistory distinguish between "Shares sold" and "Shares released"
 ```
 
 ### Performance Tips
@@ -524,6 +654,13 @@ This tool is provided for informational purposes only. Tax calculations should b
 - **E*Trade** for comprehensive transaction data export
 - **SBI** for TTBR exchange rate data
 - **Indian Income Tax Department** for FA declaration guidelines
+
+## 🆕 **Recent Updates**
+
+**Enhanced Excel Reporting**: Professional currency formatting, dynamic column widths, totals, and wrap-text headers  
+**Comprehensive Validation**: Cross-validation system for data consistency across all sources  
+**Bug Fixes**: Excel temporary file handling, BenefitHistory data interpretation improvements  
+**User Experience**: Better error messages, detailed validation reports, and improved accuracy
 
 ---
 

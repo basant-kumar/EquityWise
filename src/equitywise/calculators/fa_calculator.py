@@ -394,9 +394,13 @@ class FACalculator:
                 
                 # Calculate current holding status as of target date
                 total_granted = sum(r.granted_qty or 0 for r in grant_records if r.record_type == "Grant")
+                # Calculate vested shares using the correct fields per user feedback:
+                # - "Date" column = actual date when event occurred (for vested shares)  
+                # - "Vest Date" column = future vesting date for granted shares
+                # - Event Type = "Shares vested" for actual vesting events
                 total_vested = sum(r.vested_qty or r.qty_or_amount or 0 for r in grant_records 
-                                if r.record_type == "Event" and r.event_type == "RSU Vest" 
-                                and r.vest_date and r.vest_date <= as_of_date)
+                                if r.record_type == "Event" and r.event_type == "Shares vested" 
+                                and r.date and r.date <= as_of_date)
                 total_sold = 0  # Will be calculated from G&L data separately
                 
                 # Current vested but not sold shares

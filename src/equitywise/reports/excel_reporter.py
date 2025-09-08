@@ -153,52 +153,45 @@ class ExcelReporter:
         title_cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         title_cell.alignment = Alignment(horizontal="center")
         
-        # Summary data
-        summary_data = [
-            ["", "Metric", "USD Amount", "INR Amount"],
-            ["Vesting", "Total Vested Shares", f"{summary.total_vested_quantity:.0f} shares", ""],
+        # Vesting Details Section
+        vesting_data = [
+            ["", "Vesting Details", "USD Amount", "INR Amount"],
+            ["", "Total Vested Shares", f"{summary.total_vested_quantity:.0f} shares", ""],
             ["", "Total Vesting Income", f"${summary.total_taxable_gain_usd:,.2f}", f"₹{summary.total_taxable_gain_inr:,.2f}"],
             ["", "Average Exchange Rate", f"₹{summary.average_exchange_rate:.4f}/USD", ""],
             ["", "", "", ""],
-            ["Sales", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
+        ]
+        
+        # Sale Details Section
+        sale_data = [
+            ["", "Sale Details", "USD Amount", "INR Amount"],
+            ["", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
+            ["", "Total Purchase Amount", f"${summary.total_cost_basis_usd:,.2f}", f"₹{summary.total_cost_basis_inr:,.2f}"],
+            ["", "Total Sold Amount", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
+            ["", "", "", ""],
             ["", "Total Capital Gains", f"${summary.total_capital_gains_usd:,.2f}", f"₹{summary.total_capital_gains_inr:,.2f}"],
             ["", "Short-term Gains", f"${summary.short_term_gains_usd:,.2f}", f"₹{summary.short_term_gains_inr:,.2f}"],
             ["", "Long-term Gains", f"${summary.long_term_gains_usd:,.2f}", f"₹{summary.long_term_gains_inr:,.2f}"],
-            ["", "", "", ""],
-            ["Total", "Net Financial Impact", "", f"₹{summary.net_gain_loss_inr:,.2f}"],
         ]
+        
+        # Combine all sections
+        summary_data = vesting_data + sale_data
         
         # Add data to sheet
         for row_idx, row_data in enumerate(summary_data, start=3):
             for col_idx, value in enumerate(row_data, start=1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 
-                # Style header row
-                if row_idx == 3:
+                # Style section headers (Vesting Details, Sale Details)
+                if "Vesting Details" in str(value) or "Sale Details" in str(value):
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
-                
-                # Style totals row
-                elif "Net Financial Impact" in str(value):
-                    cell.font = Font(bold=True, size=12)
-                    cell.fill = PatternFill(start_color="D6EAF8", end_color="D6EAF8", fill_type="solid")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
                 
                 cell.border = self.border
         
-        # Auto-adjust column widths (skip merged cells)
-        for col_index, col in enumerate(ws.columns, 1):
-            max_length = 0
-            column_letter = None
-            for cell in col:
-                # Skip merged cells by checking if the cell has column_letter attribute
-                if hasattr(cell, 'column_letter'):
-                    column_letter = cell.column_letter
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-            if column_letter:
-                adjusted_width = min(max_length + 2, 30)
-                ws.column_dimensions[column_letter].width = adjusted_width
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=15, max_width=50)
     
     def _create_vesting_events_sheet(self, wb: Workbook, vesting_events: List[VestingEvent]):
         """Create vesting events sheet."""
@@ -210,11 +203,11 @@ class ExcelReporter:
             vesting_data.append({
                 'Vesting Date': event.vest_date.strftime('%d/%m/%Y'),
                 'Grant Number': event.grant_number,
-                'Shares Vested': f"{event.vested_quantity:.0f}",
-                'FMV per Share (USD)': f"${event.vest_fmv_usd:.2f}",
-                'Exchange Rate': f"₹{event.exchange_rate:.4f}",
-                'Vesting Value (USD)': f"${event.taxable_gain_usd:.2f}",
-                'Vesting Value (INR)': f"₹{event.taxable_gain_inr:.2f}",
+                'Shares Vested': event.vested_quantity,
+                'FMV per Share (USD)': event.vest_fmv_usd,
+                'Exchange Rate': event.exchange_rate,
+                'Vesting Value (USD)': event.taxable_gain_usd,
+                'Vesting Value (INR)': event.taxable_gain_inr,
                 'Financial Year': event.financial_year
             })
         
@@ -229,29 +222,72 @@ class ExcelReporter:
         title_cell.alignment = Alignment(horizontal="center")
         
         # Add DataFrame to sheet
-        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=3):
+        data_start_row = 3
+        current_row = data_start_row
+        
+        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=data_start_row):
             for c_idx, value in enumerate(row, start=1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 
                 # Style header row
-                if r_idx == 3:
+                if r_idx == data_start_row:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                else:
+                    # Apply number formatting based on column
+                    if c_idx == 3:  # Shares Vested
+                        cell.number_format = '#,##0'
+                    elif c_idx == 4:  # FMV per Share (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 5:  # Exchange Rate
+                        cell.number_format = '"₹"#,##0.0000'
+                    elif c_idx == 6:  # Vesting Value (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 7:  # Vesting Value (INR)
+                        cell.number_format = '"₹"#,##0.00'
                 
                 cell.border = self.border
+            current_row = r_idx
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 25)
-            ws.column_dimensions[column].width = adjusted_width
+        # Add total row for USD and INR columns
+        if len(vesting_events) > 0:
+            total_row = current_row + 1
+            
+            # Add TOTAL label in first column
+            total_cell = ws.cell(row=total_row, column=1, value="TOTAL")
+            total_cell.font = Font(bold=True)
+            total_cell.border = self.border
+            
+            # Add dashes for columns 2-5 (Grant Number through Exchange Rate)
+            for col in range(2, 6):
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Calculate and add total USD amount (column 6)
+            total_usd = sum(event.taxable_gain_usd for event in vesting_events)
+            usd_total_cell = ws.cell(row=total_row, column=6, value=total_usd)
+            usd_total_cell.font = Font(bold=True)
+            usd_total_cell.number_format = '"$"#,##0.00'
+            usd_total_cell.border = self.border
+            
+            # Calculate and add total INR amount (column 7)
+            total_inr = sum(event.taxable_gain_inr for event in vesting_events)
+            inr_total_cell = ws.cell(row=total_row, column=7, value=total_inr)
+            inr_total_cell.font = Font(bold=True)
+            inr_total_cell.number_format = '"₹"#,##0.00'
+            inr_total_cell.border = self.border
+            
+            # Add dash for Financial Year column (column 8)
+            cell = ws.cell(row=total_row, column=8, value="-")
+            cell.font = Font(bold=True)
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="center")
+        
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=55)
     
     def _create_sale_events_sheet(self, wb: Workbook, sale_events: List[SaleEvent]):
         """Create sale events sheet."""
@@ -264,15 +300,15 @@ class ExcelReporter:
                 'Sale Date': event.sale_date.strftime('%d/%m/%Y'),
                 'Vest Date': event.acquisition_date.strftime('%d/%m/%Y'),
                 'Grant Number': event.grant_number,
-                'Shares Sold': f"{event.quantity_sold:.0f}",
-                'Sale Price (USD)': f"${event.sale_price_usd:.2f}",
-                'Exchange Rate': f"₹{event.exchange_rate_sale:.4f}",
-                'Sale Proceeds (USD)': f"${event.sale_proceeds_usd:.2f}",
-                'Sale Proceeds (INR)': f"₹{event.sale_proceeds_inr:.2f}",
-                'Cost Basis (USD)': f"${event.cost_basis_usd:.2f}",
-                'Cost Basis (INR)': f"₹{event.cost_basis_inr:.2f}",
-                'Capital Gain (USD)': f"${event.capital_gain_usd:.2f}",
-                'Capital Gain (INR)': f"₹{event.capital_gain_inr:.2f}",
+                'Shares Sold': event.quantity_sold,
+                'Sale Price (USD)': event.sale_price_usd,
+                'Exchange Rate': event.exchange_rate_sale,
+                'Sale Proceeds (USD)': event.sale_proceeds_usd,
+                'Sale Proceeds (INR)': event.sale_proceeds_inr,
+                'Cost Basis (USD)': event.cost_basis_usd,
+                'Cost Basis (INR)': event.cost_basis_inr,
+                'Capital Gain (USD)': event.capital_gain_usd,
+                'Capital Gain (INR)': event.capital_gain_inr,
                 'Holding Period': f"{event.holding_period_days} days",
                 'Gain Type': event.gain_type,
                 'Financial Year': event.financial_year
@@ -289,29 +325,110 @@ class ExcelReporter:
         title_cell.alignment = Alignment(horizontal="center")
         
         # Add DataFrame to sheet
-        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=3):
+        data_start_row = 3
+        current_row = data_start_row
+        
+        for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), start=data_start_row):
             for c_idx, value in enumerate(row, start=1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=value)
                 
                 # Style header row
-                if r_idx == 3:
+                if r_idx == data_start_row:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                else:
+                    # Apply number formatting based on column
+                    if c_idx == 4:  # Shares Sold
+                        cell.number_format = '#,##0'
+                    elif c_idx == 5:  # Sale Price (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 6:  # Exchange Rate
+                        cell.number_format = '"₹"#,##0.0000'
+                    elif c_idx == 7:  # Sale Proceeds (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 8:  # Sale Proceeds (INR)
+                        cell.number_format = '"₹"#,##0.00'
+                    elif c_idx == 9:  # Cost Basis (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 10:  # Cost Basis (INR)
+                        cell.number_format = '"₹"#,##0.00'
+                    elif c_idx == 11:  # Capital Gain (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 12:  # Capital Gain (INR)
+                        cell.number_format = '"₹"#,##0.00'
                 
                 cell.border = self.border
+            current_row = r_idx
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 20)
-            ws.column_dimensions[column].width = adjusted_width
+        # Add total row for USD and INR columns
+        if len(sale_events) > 0:
+            total_row = current_row + 1
+            
+            # Add TOTAL label in first column
+            total_cell = ws.cell(row=total_row, column=1, value="TOTAL")
+            total_cell.font = Font(bold=True)
+            total_cell.border = self.border
+            
+            # Add dashes for columns 2-6 (Vest Date through Exchange Rate)
+            for col in range(2, 7):
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Calculate and add totals for relevant columns
+            # Sale Proceeds (USD) - column 7
+            total_proceeds_usd = sum(event.sale_proceeds_usd for event in sale_events)
+            proceeds_usd_cell = ws.cell(row=total_row, column=7, value=total_proceeds_usd)
+            proceeds_usd_cell.font = Font(bold=True)
+            proceeds_usd_cell.number_format = '"$"#,##0.00'
+            proceeds_usd_cell.border = self.border
+            
+            # Sale Proceeds (INR) - column 8
+            total_proceeds_inr = sum(event.sale_proceeds_inr for event in sale_events)
+            proceeds_inr_cell = ws.cell(row=total_row, column=8, value=total_proceeds_inr)
+            proceeds_inr_cell.font = Font(bold=True)
+            proceeds_inr_cell.number_format = '"₹"#,##0.00'
+            proceeds_inr_cell.border = self.border
+            
+            # Cost Basis (USD) - column 9
+            total_cost_usd = sum(event.cost_basis_usd for event in sale_events)
+            cost_usd_cell = ws.cell(row=total_row, column=9, value=total_cost_usd)
+            cost_usd_cell.font = Font(bold=True)
+            cost_usd_cell.number_format = '"$"#,##0.00'
+            cost_usd_cell.border = self.border
+            
+            # Cost Basis (INR) - column 10
+            total_cost_inr = sum(event.cost_basis_inr for event in sale_events)
+            cost_inr_cell = ws.cell(row=total_row, column=10, value=total_cost_inr)
+            cost_inr_cell.font = Font(bold=True)
+            cost_inr_cell.number_format = '"₹"#,##0.00'
+            cost_inr_cell.border = self.border
+            
+            # Capital Gain (USD) - column 11
+            total_gain_usd = sum(event.capital_gain_usd for event in sale_events)
+            gain_usd_cell = ws.cell(row=total_row, column=11, value=total_gain_usd)
+            gain_usd_cell.font = Font(bold=True)
+            gain_usd_cell.number_format = '"$"#,##0.00'
+            gain_usd_cell.border = self.border
+            
+            # Capital Gain (INR) - column 12
+            total_gain_inr = sum(event.capital_gain_inr for event in sale_events)
+            gain_inr_cell = ws.cell(row=total_row, column=12, value=total_gain_inr)
+            gain_inr_cell.font = Font(bold=True)
+            gain_inr_cell.number_format = '"₹"#,##0.00'
+            gain_inr_cell.border = self.border
+            
+            # Add dashes for remaining columns (13-15: Holding Period, Gain Type, Financial Year)
+            for col in range(13, 16):
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
+        
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
     
     def _create_bank_reconciliation_sheet(self, wb: Workbook, sale_events: List[SaleEvent], bank_transactions: List[Dict]):
         """Create bank reconciliation sheet."""
@@ -371,21 +488,12 @@ class ExcelReporter:
                 if r_idx == 3:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
                 
                 cell.border = self.border
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 20)
-            ws.column_dimensions[column].width = adjusted_width
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
     
     def _create_fa_summary_sheet(self, wb: Workbook, summary: FADeclarationSummary, calendar_year: str):
         """Create FA summary sheet."""
@@ -399,21 +507,21 @@ class ExcelReporter:
         title_cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         title_cell.alignment = Alignment(horizontal="center")
         
-        # Summary data
+        # Summary data - store raw values for proper number formatting
         summary_data = [
             ["", "Metric", "Value", "Notes"],
             ["Holdings", "Total Vested Shares", f"{summary.total_vested_shares:.0f} shares", ""],
-            ["", "Closing Balance", f"₹{summary.closing_balance_inr:,.2f}", "As on Dec 31"],
-            ["", "Peak Balance", f"₹{summary.peak_balance_inr:,.2f}", f"Peak Date: {summary.peak_balance_date or 'N/A'}"],
-            ["", "Opening Balance", f"₹{summary.opening_balance_inr:,.2f}", "As on Jan 1"],
+            ["", "Closing Balance", summary.closing_balance_inr, "As on Dec 31"],
+            ["", "Peak Balance", summary.peak_balance_inr, f"Peak Date: {summary.peak_balance_date or 'N/A'}"],
+            ["", "Opening Balance", summary.opening_balance_inr, "As on Jan 1"],
             ["", "", "", ""],
-            ["Exchange Rates", "Year-end Rate", f"₹{summary.year_end_exchange_rate:.4f}/USD", "Dec 31 rate"],
-            ["", "Opening Rate", f"₹{summary.opening_exchange_rate:.4f}/USD", "Jan 1 rate"],
-            ["", "Peak Rate", f"₹{summary.peak_exchange_rate:.4f}/USD", "Highest during year"],
+            ["Exchange Rates", "Year-end Rate", summary.year_end_exchange_rate, "Dec 31 rate"],
+            ["", "Opening Rate", summary.opening_exchange_rate, "Jan 1 rate"],
+            ["", "Peak Rate", summary.peak_exchange_rate, "Highest during year"],
             ["", "", "", ""],
             ["Declaration", "Declaration Required?", "YES" if summary.closing_balance_inr >= summary.fa_declaration_threshold_inr else "NO", f"Threshold: ₹{summary.fa_declaration_threshold_inr:,.0f}"],
-            ["", "Total Value (USD)", f"${summary.vested_holdings_usd:,.2f}", "At year-end rates"],
-            ["", "Total Value (INR)", f"₹{summary.vested_holdings_inr:,.2f}", "At year-end rates"]
+            ["", "Total Value (USD)", summary.vested_holdings_usd, "At year-end rates"],
+            ["", "Total Value (INR)", summary.vested_holdings_inr, "At year-end rates"]
         ]
         
         # Add data to sheet
@@ -421,11 +529,21 @@ class ExcelReporter:
             for col_idx, value in enumerate(row_data, start=1):
                 cell = ws.cell(row=row_idx, column=col_idx, value=value)
                 
+                # Apply number formatting for currency values
+                if col_idx == 3 and isinstance(value, (int, float)) and value != 0:  # Value column
+                    metric_name = str(row_data[1]) if len(row_data) > 1 else ""
+                    if "Balance" in metric_name or "Value (INR)" in metric_name:
+                        cell.number_format = '"₹"#,##0.00'
+                    elif "Value (USD)" in metric_name:
+                        cell.number_format = '"$"#,##0.00'
+                    elif "Rate" in metric_name and "Exchange" in str(row_data[0]):
+                        cell.number_format = '"₹"#,##0.0000"/USD"'
+                
                 # Style header row
                 if row_idx == 3:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
                 
                 # Style declaration row
                 elif "Declaration Required" in str(value):
@@ -437,40 +555,29 @@ class ExcelReporter:
                 
                 cell.border = self.border
         
-        # Auto-adjust column widths (skip merged cells)
-        for col_index, col in enumerate(ws.columns, 1):
-            max_length = 0
-            column_letter = None
-            for cell in col:
-                # Skip merged cells by checking if the cell has column_letter attribute
-                if hasattr(cell, 'column_letter'):
-                    column_letter = cell.column_letter
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-            if column_letter:
-                adjusted_width = min(max_length + 2, 30)
-                ws.column_dimensions[column_letter].width = adjusted_width
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=15, max_width=50)
     
     def _create_equity_holdings_sheet(self, wb: Workbook, equity_holdings: List[EquityHolding]):
         """Create equity holdings sheet."""
         ws = wb.create_sheet("Equity Holdings")
         
-        # Convert to DataFrame
+        # Convert to DataFrame - store raw values for proper number formatting
         holdings_data = []
         for holding in equity_holdings:
             holdings_data.append({
                 'Grant Number': holding.grant_number or 'N/A',
                 'Vest Date': holding.vest_date.strftime('%d/%m/%Y') if holding.vest_date else 'N/A',
                 'Holding Date': holding.holding_date.strftime('%d/%m/%Y'),
-                'Shares Held': f"{holding.quantity:.0f}",
-                'Cost Basis per Share (USD)': f"${holding.cost_basis_usd_per_share:.2f}",
-                'Market Price per Share (USD)': f"${holding.market_value_usd_per_share:.2f}",
-                'Total Cost Basis (USD)': f"${holding.cost_basis_usd_total:.2f}",
-                'Total Market Value (USD)': f"${holding.market_value_usd_total:.2f}",
-                'Total Market Value (INR)': f"₹{holding.market_value_inr_total:.2f}",
-                'Exchange Rate': f"₹{holding.exchange_rate:.4f}",
-                'Unrealized Gain (USD)': f"${holding.unrealized_gain_usd:.2f}",
-                'Unrealized Gain (INR)': f"₹{holding.unrealized_gain_inr:.2f}",
+                'Shares Held': holding.quantity,
+                'Cost Basis per Share (USD)': holding.cost_basis_usd_per_share,
+                'Market Price per Share (USD)': holding.market_value_usd_per_share,
+                'Total Cost Basis (USD)': holding.cost_basis_usd_total,
+                'Total Market Value (USD)': holding.market_value_usd_total,
+                'Total Market Value (INR)': holding.market_value_inr_total,
+                'Exchange Rate': holding.exchange_rate,
+                'Unrealized Gain (USD)': holding.unrealized_gain_usd,
+                'Unrealized Gain (INR)': holding.unrealized_gain_inr,
                 'Calendar Year': holding.calendar_year
             })
         
@@ -493,39 +600,124 @@ class ExcelReporter:
                 if r_idx == 3:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                else:
+                    # Apply number formatting based on column
+                    if c_idx == 4:  # Shares Held
+                        cell.number_format = '#,##0'
+                    elif c_idx == 5:  # Cost Basis per Share (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 6:  # Market Price per Share (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 7:  # Total Cost Basis (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 8:  # Total Market Value (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 9:  # Total Market Value (INR)
+                        cell.number_format = '"₹"#,##0.00'
+                    elif c_idx == 10:  # Exchange Rate
+                        cell.number_format = '"₹"#,##0.0000'
+                    elif c_idx == 11:  # Unrealized Gain (USD)
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx == 12:  # Unrealized Gain (INR)
+                        cell.number_format = '"₹"#,##0.00'
                 
                 cell.border = self.border
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 20)
-            ws.column_dimensions[column].width = adjusted_width
+        # Add total rows for USD and INR currency columns
+        if equity_holdings:
+            total_row = len(df) + 4  # +3 for title and header, +1 for data
+            
+            # Add TOTAL label in first column
+            total_cell = ws.cell(row=total_row, column=1, value="TOTAL")
+            total_cell.font = Font(bold=True)
+            total_cell.border = self.border
+            
+            # Add dashes for non-numeric columns
+            for col in [2, 3, 13]:  # Vest Date, Holding Date, Calendar Year
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Calculate and add totals for currency columns
+            total_shares = sum(h.quantity for h in equity_holdings)
+            total_cost_basis_usd = sum(h.cost_basis_usd_total for h in equity_holdings)
+            total_market_value_usd = sum(h.market_value_usd_total for h in equity_holdings)
+            total_market_value_inr = sum(h.market_value_inr_total for h in equity_holdings)
+            total_unrealized_gain_usd = sum(h.unrealized_gain_usd for h in equity_holdings)
+            total_unrealized_gain_inr = sum(h.unrealized_gain_inr for h in equity_holdings)
+            
+            # Column 4: Shares Held
+            shares_cell = ws.cell(row=total_row, column=4, value=total_shares)
+            shares_cell.font = Font(bold=True)
+            shares_cell.number_format = '#,##0'
+            shares_cell.border = self.border
+            shares_cell.alignment = Alignment(horizontal="center")
+            
+            # Skip per-share values (columns 5-6) with dashes
+            for col in [5, 6]:
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
+            
+            # Column 7: Total Cost Basis (USD)
+            cost_cell = ws.cell(row=total_row, column=7, value=total_cost_basis_usd)
+            cost_cell.font = Font(bold=True)
+            cost_cell.number_format = '"$"#,##0.00'
+            cost_cell.border = self.border
+            
+            # Column 8: Total Market Value (USD)
+            market_usd_cell = ws.cell(row=total_row, column=8, value=total_market_value_usd)
+            market_usd_cell.font = Font(bold=True)
+            market_usd_cell.number_format = '"$"#,##0.00'
+            market_usd_cell.border = self.border
+            
+            # Column 9: Total Market Value (INR)
+            market_inr_cell = ws.cell(row=total_row, column=9, value=total_market_value_inr)
+            market_inr_cell.font = Font(bold=True)
+            market_inr_cell.number_format = '"₹"#,##0.00'
+            market_inr_cell.border = self.border
+            
+            # Column 10: Exchange Rate (dash)
+            rate_cell = ws.cell(row=total_row, column=10, value="-")
+            rate_cell.font = Font(bold=True)
+            rate_cell.border = self.border
+            rate_cell.alignment = Alignment(horizontal="center")
+            
+            # Column 11: Unrealized Gain (USD)
+            gain_usd_cell = ws.cell(row=total_row, column=11, value=total_unrealized_gain_usd)
+            gain_usd_cell.font = Font(bold=True)
+            gain_usd_cell.number_format = '"$"#,##0.00'
+            gain_usd_cell.border = self.border
+            
+            # Column 12: Unrealized Gain (INR)
+            gain_inr_cell = ws.cell(row=total_row, column=12, value=total_unrealized_gain_inr)
+            gain_inr_cell.font = Font(bold=True)
+            gain_inr_cell.number_format = '"₹"#,##0.00'
+            gain_inr_cell.border = self.border
+        
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
     
     def _create_vest_wise_details_sheet(self, wb: Workbook, vest_wise_details: List[VestWiseDetails]):
         """Create vest-wise details sheet."""
         ws = wb.create_sheet("Vest-wise Details")
         
-        # Convert to DataFrame
+        # Convert to DataFrame - store raw values for proper number formatting
         vest_data = []
         for detail in vest_wise_details:
             vest_data.append({
                 'Grant Number': detail.grant_number,
                 'Vest Date': detail.vest_date.strftime('%d/%m/%Y'),
-                'Initial Value (INR)': f"₹{detail.initial_value_inr:.2f}",
-                'Peak Value (INR)': f"₹{detail.peak_value_inr:.2f}",
-                'Closing Value (INR)': f"₹{detail.closing_value_inr:.2f}",
-                'Gross Income (INR)': f"₹{detail.gross_income_received:.2f}",
-                'Sale Proceeds (INR)': f"₹{detail.gross_proceeds_inr:.2f}",
-                'Shares at Year-end': f"{detail.closing_shares:.0f}",
-                'Shares Sold': f"{detail.shares_sold:.0f}"
+                'Initial Value (INR)': detail.initial_value_inr,
+                'Peak Value (INR)': detail.peak_value_inr,
+                'Closing Value (INR)': detail.closing_value_inr,
+                'Gross Income (INR)': detail.gross_income_received,
+                'Sale Proceeds (INR)': detail.gross_proceeds_inr,
+                'Shares at Year-end': detail.closing_shares,
+                'Shares Sold': detail.shares_sold
             })
         
         df = pd.DataFrame(vest_data)
@@ -550,57 +742,92 @@ class ExcelReporter:
                 if r_idx == data_start_row:
                     cell.font = self.header_font
                     cell.fill = self.header_fill
-                    cell.alignment = Alignment(horizontal="center")
+                    cell.alignment = Alignment(horizontal="center", wrap_text=True)
+                else:
+                    # Apply number formatting based on column
+                    if c_idx in [3, 4, 5, 6, 7]:  # All INR currency columns
+                        cell.number_format = '"₹"#,##0.00'
+                    elif c_idx in [8, 9]:  # Shares columns
+                        cell.number_format = '#,##0'
                 
                 cell.border = self.border
             current_row = r_idx
         
-        # Add total row for Sale Proceeds
-        total_sale_proceeds = sum(detail.gross_proceeds_inr for detail in vest_wise_details if detail.gross_proceeds_inr > 0)
-        
-        if total_sale_proceeds > 0:
+        # Add total rows for currency columns
+        if vest_wise_details:
             total_row = current_row + 1
             
             # Column mapping based on DataFrame structure:
             # 1: Grant Number, 2: Vest Date, 3: Initial Value, 4: Peak Value, 
             # 5: Closing Value, 6: Gross Income, 7: Sale Proceeds, 8: Shares at Year-end, 9: Shares Sold
             
+            # Calculate totals for currency columns
+            total_initial_value = sum(detail.initial_value_inr for detail in vest_wise_details)
+            total_peak_value = sum(detail.peak_value_inr for detail in vest_wise_details)
+            total_closing_value = sum(detail.closing_value_inr for detail in vest_wise_details)
+            total_gross_income = sum(detail.gross_income_received for detail in vest_wise_details)
+            total_sale_proceeds = sum(detail.gross_proceeds_inr for detail in vest_wise_details if detail.gross_proceeds_inr > 0)
+            total_shares_yearend = sum(detail.closing_shares for detail in vest_wise_details)
+            total_shares_sold = sum(detail.shares_sold for detail in vest_wise_details)
+            
             # Add TOTAL label in first column
             total_cell = ws.cell(row=total_row, column=1, value="TOTAL")
             total_cell.font = Font(bold=True)
             total_cell.border = self.border
             
-            # Add dashes for columns 2-6 (Vest Date through Gross Income)
-            for col in range(2, 7):
-                cell = ws.cell(row=total_row, column=col, value="-")
-                cell.font = Font(bold=True)
-                cell.border = self.border
-                cell.alignment = Alignment(horizontal="center")
+            # Add dash for Vest Date column
+            dash_cell = ws.cell(row=total_row, column=2, value="-")
+            dash_cell.font = Font(bold=True)
+            dash_cell.border = self.border
+            dash_cell.alignment = Alignment(horizontal="center")
             
-            # Add total sale proceeds in the Sale Proceeds column (column 7)  
-            proceeds_cell = ws.cell(row=total_row, column=7, value=f"₹{total_sale_proceeds:,.2f}")
+            # Column 3: Initial Value (INR)
+            initial_cell = ws.cell(row=total_row, column=3, value=total_initial_value)
+            initial_cell.font = Font(bold=True)
+            initial_cell.number_format = '"₹"#,##0.00'
+            initial_cell.border = self.border
+            
+            # Column 4: Peak Value (INR)
+            peak_cell = ws.cell(row=total_row, column=4, value=total_peak_value)
+            peak_cell.font = Font(bold=True)
+            peak_cell.number_format = '"₹"#,##0.00'
+            peak_cell.border = self.border
+            
+            # Column 5: Closing Value (INR)
+            closing_cell = ws.cell(row=total_row, column=5, value=total_closing_value)
+            closing_cell.font = Font(bold=True)
+            closing_cell.number_format = '"₹"#,##0.00'
+            closing_cell.border = self.border
+            
+            # Column 6: Gross Income (INR)
+            income_cell = ws.cell(row=total_row, column=6, value=total_gross_income)
+            income_cell.font = Font(bold=True)
+            income_cell.number_format = '"₹"#,##0.00'
+            income_cell.border = self.border
+            
+            # Column 7: Sale Proceeds (INR)
+            proceeds_cell = ws.cell(row=total_row, column=7, value=total_sale_proceeds)
             proceeds_cell.font = Font(bold=True)
+            proceeds_cell.number_format = '"₹"#,##0.00'
             proceeds_cell.border = self.border
-            proceeds_cell.alignment = Alignment(horizontal="right")
             
-            # Add dashes for remaining columns (8-9: Shares at Year-end, Shares Sold)
-            for col in range(8, len(df.columns) + 1):
-                cell = ws.cell(row=total_row, column=col, value="-")
-                cell.font = Font(bold=True)
-                cell.border = self.border
-                cell.alignment = Alignment(horizontal="center")
+            # Column 8: Shares at Year-end
+            yearend_shares_cell = ws.cell(row=total_row, column=8, value=total_shares_yearend)
+            yearend_shares_cell.font = Font(bold=True)
+            yearend_shares_cell.number_format = '#,##0'
+            yearend_shares_cell.border = self.border
+            yearend_shares_cell.alignment = Alignment(horizontal="center")
+            
+            # Column 9: Shares Sold
+            sold_shares_cell = ws.cell(row=total_row, column=9, value=total_shares_sold)
+            sold_shares_cell.font = Font(bold=True)
+            sold_shares_cell.number_format = '#,##0'
+            sold_shares_cell.border = self.border
+            sold_shares_cell.alignment = Alignment(horizontal="center")
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 20)
-            ws.column_dimensions[column].width = adjusted_width
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
+    
     def _create_company_details_sheet(self, wb: Workbook):
         """Create company and depository account details sheet for FA filing."""
         from ..data.models import create_default_company_records
@@ -634,6 +861,7 @@ class ExcelReporter:
             cell = ws.cell(row=row, column=col, value=header)
             cell.font = Font(bold=True)
             cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
             cell.border = self.border
         
         # Employer company data
@@ -680,6 +908,7 @@ class ExcelReporter:
             cell = ws.cell(row=row, column=col, value=header)
             cell.font = Font(bold=True)
             cell.fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center", wrap_text=True)
             cell.border = self.border
         
         # Depository account data
@@ -730,14 +959,57 @@ class ExcelReporter:
             ws.cell(row=row, column=1, value=note)
             row += 1
         
-        # Auto-adjust column widths
-        for col in ws.columns:
-            max_length = 0
-            column = col[0].column_letter if hasattr(col[0], 'column_letter') else None
-            if not column:
-                continue
-            for cell in col:
-                if hasattr(cell, 'column_letter') and cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            adjusted_width = min(max_length + 2, 30)  # Slightly wider for this sheet
-            ws.column_dimensions[column].width = adjusted_width
+        # Auto-adjust column widths with improved calculation
+        self._auto_adjust_column_widths(ws, min_width=18, max_width=55)
+    
+    def _auto_adjust_column_widths(self, ws, min_width: int = 12, max_width: int = 60):
+        """Simple but robust column width adjustment to prevent ######### display."""
+        from openpyxl.utils import get_column_letter
+        
+        # Iterate through columns by index to avoid merged cell issues
+        for col_idx, column_cells in enumerate(ws.columns, 1):
+            # Get column letter from column index
+            column_letter = get_column_letter(col_idx)
+            
+            # Get column header to determine content type, skip merged cells
+            header_text = ""
+            for cell in column_cells:
+                # Skip merged cells by checking if cell has column_letter attribute
+                # Merged cells don't have this attribute
+                if not hasattr(cell, 'column_letter'):
+                    continue
+                if cell.value and isinstance(cell.value, str):
+                    header_text = str(cell.value).lower()
+                    break
+            
+            # Set width based on content type with very generous defaults
+            if any(word in header_text for word in ['date', 'period', 'year']):
+                # Date columns - need space for "31/01/2025" format
+                width = 15
+            elif any(word in header_text for word in ['number', 'grant']):
+                # Grant/ID numbers - medium width  
+                width = 18
+            elif any(word in header_text for word in ['shares', 'quantity']):
+                # Share quantities - medium width for numbers like "1,234"
+                width = 12
+            elif any(word in header_text for word in ['price', 'rate']) and 'exchange' not in header_text:
+                # Stock prices - need space for "$563.54" format
+                width = 15
+            elif 'exchange' in header_text and 'rate' in header_text:
+                # Exchange rates - need space for "₹86.6414" format  
+                width = 18
+            elif any(word in header_text for word in ['proceeds', 'basis', 'gain', 'value', 'amount', 'income']):
+                # Currency amounts - need lots of space for "₹1,099,543.25" format
+                if 'inr' in header_text or '₹' in header_text:
+                    width = 25  # INR amounts tend to be larger
+                else:
+                    width = 20  # USD amounts
+            elif any(word in header_text for word in ['type', 'term']):
+                # Text classifications like "Short-term"
+                width = 15
+            else:
+                # Default generous width for unknown columns
+                width = 18
+            
+            # Apply the calculated width
+            ws.column_dimensions[column_letter].width = width
