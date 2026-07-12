@@ -218,13 +218,19 @@ data/
 - **Multi-Bank Support**: Configurable patterns for SBI, HDFC, ICICI, Axis, Kotak banks
 - **Custom Patterns**: Add patterns for any bank - see [Bank Patterns Guide](docs/BANK_PATTERNS.md)
 
-#### 📈 **Adobe Stock Data** → `data/reference_data/adobe_stock/`
-- **Yahoo Finance**: Search "ADBE" → Historical Data → Download CSV
-- Save as: `data/reference_data/adobe_stock/HistoricalData_YYYYMMDD.csv`
+#### 📈 **Adobe Stock Data & Exchange Rates** → `data/reference_data/`
 
-#### 💱 **Exchange Rates** → `data/reference_data/exchange_rates/`
-- **SBI TTBR Rates**: Download USD-INR historical rates
-- Save as: `data/reference_data/exchange_rates/Exchange_Reference_Rates.csv`
+Use the included script to automatically fetch the latest ADBE stock prices and USD-INR exchange rates:
+
+```bash
+# One-time setup (if .venv doesn't exist yet)
+uv venv && uv pip install yfinance requests
+
+# Fetch missing data up to today
+.venv/bin/python scripts/update_reference_data.py
+```
+
+The script detects the last date in each CSV and only fetches what's missing — no duplicates, no manual downloads needed. See [`data/reference_data/README.md`](data/reference_data/README.md) for details on data sources and format.
 
 ## 💡 **Usage Examples**
 

@@ -39,12 +39,13 @@ Exchange rates are used for:
 - **Tax compliance** - Accurate INR valuations
 
 ## 🔄 Updating Data
-```bash
-# Example: Update with latest rates
-curl "https://api.exchangerate-api.com/v4/latest/USD" | jq '.rates.INR'
 
-# Or download historical CSV from financial data providers
+### Automated (Recommended):
+```bash
+# From the project root
+.venv/bin/python scripts/update_reference_data.py
 ```
+This fetches missing USD-INR rates from the free fawazahmed0/currency-api and prepends them to the existing CSV.
 
 ---
 💡 **Tip**: Keep this data updated regularly. Missing exchange rates will cause calculation errors or require manual fallback rates!

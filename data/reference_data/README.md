@@ -77,19 +77,28 @@ Stock prices determine:
 - No personal or sensitive information
 - Version control helps track data updates
 
-### 🔄 **Regular Updates**
-```bash
-# Update exchange rates (monthly)
-wget "https://api.exchangerate.com/..." -O exchange_rates/Exchange_Reference_Rates.csv
+### 🔄 **Automated Updates (Recommended)**
 
-# Update stock prices (weekly)
-wget "https://finance.yahoo.com/..." -O adobe_stock/HistoricalData_latest.csv
+Use the included update script to fetch missing data up to the current date:
+
+```bash
+# One-time setup (if .venv doesn't exist yet)
+uv venv && uv pip install yfinance requests
+
+# Run the updater
+.venv/bin/python scripts/update_reference_data.py
 ```
+
+The script automatically:
+- Detects the last date in each CSV
+- Fetches only the missing data (no duplicates)
+- Prepends new rows while preserving the original file format
+- Uses **Yahoo Finance** for ADBE stock prices and **fawazahmed0/currency-api** for USD-INR rates
 
 ### 📊 **Data Quality**
 - **Date ranges**: Ensure coverage for all your RSU transaction periods
-- **Format consistency**: Maintain consistent CSV structure
-- **Rate accuracy**: Use reliable financial data sources
+- **Format consistency**: Maintained automatically by the update script
+- **Rate accuracy**: Uses reliable financial data sources (Yahoo Finance, open exchange rate APIs)
 
 ---
 

@@ -38,21 +38,20 @@ Stock prices are used for:
 - **Tax compliance** - Accurate stock price references
 
 ## 🔄 Updating Data
+
+### Automated (Recommended):
+```bash
+# From the project root
+.venv/bin/python scripts/update_reference_data.py
+```
+This fetches missing ADBE prices from Yahoo Finance and prepends them to the existing CSV, preserving the original format.
+
 ### Manual Download:
 1. Go to **Yahoo Finance** → Search "ADBE"
 2. Click **Historical Data** tab
 3. Set date range and frequency (Daily)
 4. **Download CSV** file
 5. Save as `HistoricalData_YYYYMMDD.csv`
-
-### API Example:
-```bash
-# Alpha Vantage API (free tier)
-curl "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=ADBE&outputsize=full&apikey=YOUR_KEY&datatype=csv" -o adobe_stock/HistoricalData_latest.csv
-
-# Yahoo Finance (unofficial)
-wget "https://query1.finance.yahoo.com/v7/finance/download/ADBE?period1=START_DATE&period2=END_DATE&interval=1d&events=history" -O adobe_stock/HistoricalData_latest.csv
-```
 
 ## 📊 Data Quality Tips
 - **Daily frequency** recommended for accurate calculations
