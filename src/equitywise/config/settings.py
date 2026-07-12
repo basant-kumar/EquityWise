@@ -239,27 +239,39 @@ class Settings(BaseSettings):
     # ===================================================================================
     
     def discover_rsu_pdf_files(self) -> List[Path]:
-        """Automatically discover all RSU PDF files in rsu_documents directory.
-        
+        """Automatically discover all RSU statement files (PDF or XLSX/XLS).
+
+        The name is kept for backward compatibility, but the parser now
+        accepts either PDF or XLSX/XLS. When both a .pdf and .xlsx exist for
+        the same base name (e.g. RSU_FY-25-26.pdf and RSU_FY-25-26.xlsx),
+        the XLSX is preferred — it round-trips fractional ESPP quantities
+        without lossy PDF text extraction.
+
         Returns:
-            List of Path objects for all PDF files found, sorted by name
+            List of Path objects for all statement files found, sorted by name
         """
         if not self.rsu_documents_dir.exists():
             logger.warning(f"RSU documents directory not found: {self.rsu_documents_dir}")
             return []
-        
-        pdf_files = []
-        for pattern in ["*.pdf", "*.PDF"]:
-            pdf_files.extend(self.rsu_documents_dir.glob(pattern))
-        
-        # Sort by filename for consistent processing order
-        pdf_files.sort(key=lambda x: x.name)
-        
-        logger.info(f"Discovered {len(pdf_files)} RSU PDF files in {self.rsu_documents_dir}")
-        for file in pdf_files:
-            logger.debug(f"Found RSU PDF: {file.name}")
-        
-        return pdf_files
+
+        found: dict[str, Path] = {}
+        pref_rank = {".xlsx": 0, ".xls": 1, ".pdf": 2}
+        for pattern in ["*.xlsx", "*.xls", "*.pdf", "*.XLSX", "*.XLS", "*.PDF"]:
+            for f in self.rsu_documents_dir.glob(pattern):
+                if f.name.startswith("~$"):
+                    continue  # Excel lock file
+                key = f.stem  # e.g. "RSU_FY-25-26"
+                existing = found.get(key)
+                if existing is None or pref_rank.get(f.suffix.lower(), 9) < pref_rank.get(existing.suffix.lower(), 9):
+                    found[key] = f
+
+        files = sorted(found.values(), key=lambda x: x.name)
+
+        logger.info(f"Discovered {len(files)} RSU statement files in {self.rsu_documents_dir}")
+        for file in files:
+            logger.debug(f"Found RSU statement: {file.name}")
+
+        return files
     
     def discover_gl_statement_files(self) -> List[Path]:
         """Automatically discover all G&L statement files in gl_statements directory.

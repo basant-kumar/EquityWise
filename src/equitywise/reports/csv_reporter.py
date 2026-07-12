@@ -452,7 +452,7 @@ class CSVReporter:
                 clean_address,  # Address of entity (no quotes/commas)
                 "95110",  # ZIP Code
                 "Listed Company",  # Nature of entity
-                detail.vest_date.strftime("%d-%m-%Y"),  # Date of acquiring the interest (DD-MM-YYYY)
+                detail.vest_date.strftime("%Y-%m-%d"),  # Date of acquiring the interest — ITR portal accepts ISO 8601 (YYYY-MM-DD); DD-MM-YYYY and DD/MM/YYYY are both rejected
                 str(int(round(detail.initial_value_inr))),  # Initial value (integer)
                 str(int(round(detail.peak_value_inr))),  # Peak value (integer)
                 str(int(round(detail.closing_value_inr))),  # Closing balance (integer)

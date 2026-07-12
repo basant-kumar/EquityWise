@@ -214,3 +214,4 @@ settings.local.py
 .vscode/settings.json
 .idea/workspace.xml
 *.sublime-*
+.tokensave
