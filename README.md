@@ -97,6 +97,9 @@ uv run equitywise --help
 # Interactive mode (recommended for first-time users)
 uv run equitywise
 
+# Generate detailed RSU and FA Excel reports for one financial year
+uv run equitywise generate-reports --financial-year FY24-25
+
 # Calculate RSU taxes for FY 2024-25
 uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
 
@@ -365,6 +368,24 @@ uv run equitywise calculate-rsu --financial-year FY24-25 --validate --detailed
 ## 🎛️ **Command Reference**
 
 ### Core Commands
+
+**`generate-reports`** - Generate RSU and FA reports together
+```bash
+# FY24-25 maps to RSU FY24-25 and FA calendar year 2024
+uv run equitywise generate-reports --financial-year FY24-25
+
+# Generate both Excel and CSV outputs with cross-validation
+uv run equitywise generate-reports \
+  --financial-year FY24-25 \
+  --output-format both \
+  --validate
+
+# Generate summary-only workbooks and an FA declaration CSV
+uv run equitywise generate-reports \
+  --financial-year FY24-25 \
+  --summary-only \
+  --export-fa-csv
+```
 
 **`calculate-rsu`** - Calculate RSU tax obligations
 ```bash

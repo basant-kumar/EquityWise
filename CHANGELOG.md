@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🆕 Features
+
+- Add `generate-reports --financial-year FY25-26` to generate detailed RSU and
+  FA reports together, automatically mapping the FY to FA calendar year 2025.
+
 ### 🐛 Bug Fixes
 
 - Deduct confirmed selling expenses that are absent from broker G&L statements

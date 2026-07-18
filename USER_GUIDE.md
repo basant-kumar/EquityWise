@@ -240,6 +240,11 @@ uv run equitywise
 ### 3.2 Command Line Mode (For Advanced Users)
 
 ```bash
+# Generate both detailed RSU and FA Excel reports in one command.
+# FY24-25 automatically maps to FA calendar year 2024.
+uv run equitywise generate-reports \
+  --financial-year FY24-25
+
 # Calculate RSU taxes for FY 2024-25
 uv run equitywise calculate-rsu \
   --financial-year FY24-25 \
@@ -381,6 +386,9 @@ uv run equitywise calculate-fa \
 ### 5.1 Multi-Year Analysis
 
 ```bash
+# Generate both reports for one annual tax filing
+uv run equitywise generate-reports --financial-year FY24-25
+
 # Calculate RSU for multiple financial years
 for fy in FY22-23 FY23-24 FY24-25; do
   uv run equitywise calculate-rsu \

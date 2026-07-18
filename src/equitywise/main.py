@@ -14,6 +14,7 @@ Key Features:
 - Progress tracking with Rich UI components
 
 Commands:
+- generate-reports: Generate both RSU and FA reports for one financial year
 - calculate-rsu: Calculate RSU capital gains and tax obligations
 - calculate-fa: Calculate Foreign Assets declaration requirements
 - validate-data: Validate input data files for completeness and accuracy
@@ -25,6 +26,9 @@ Example Usage:
     
     # Calculate RSU taxes for specific financial year
     uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
+
+    # Generate both annual RSU and FA reports with one command
+    uv run equitywise generate-reports --financial-year FY24-25
     
     # Check Foreign Assets declaration requirement
     uv run equitywise calculate-fa --calendar-year 2024 --check-only
@@ -115,13 +119,13 @@ def cli(ctx: click.Context, log_level: str, log_file: Optional[str]) -> None:
     🚀 QUICK START:
         equitywise interactive                    # Guided setup
         equitywise validate-data                  # Check file setup
+        equitywise generate-reports --financial-year FY24-25
         equitywise calculate-rsu --financial-year FY24-25
         equitywise calculate-fa --calendar-year 2024
     
     💡 COMMON WORKFLOWS:
         # Complete tax preparation
-        equitywise calculate-rsu --detailed --output-format both
-        equitywise calculate-fa --detailed --output-format both
+        equitywise generate-reports --financial-year FY24-25 --output-format both
         
         # Single year analysis
         equitywise calculate-rsu --financial-year FY24-25 --detailed
@@ -837,6 +841,102 @@ def calculate_fa(
             import traceback
             console.print(f"\n[dim]🔍 Detailed stack trace:[/dim]")
             console.print(f"[red]{traceback.format_exc()}[/red]")
+
+
+@cli.command("generate-reports")
+@click.option(
+    "--financial-year",
+    required=True,
+    type=str,
+    help=(
+        "Indian financial year for both reports (e.g., FY25-26). "
+        "The FA report uses the calendar year ending within that FY."
+    ),
+    metavar="FY<YY>-<YY>",
+)
+@click.option(
+    "--detailed/--summary-only",
+    default=True,
+    show_default=True,
+    help="Generate detailed transaction sheets or summary sheets only.",
+)
+@click.option(
+    "--output-format",
+    type=click.Choice(["excel", "csv", "both"], case_sensitive=False),
+    default="excel",
+    show_default=True,
+    help="Output format for both RSU and FA reports.",
+)
+@click.option(
+    "--validate-first",
+    is_flag=True,
+    help="Validate required input files before each calculation.",
+)
+@click.option(
+    "--validate",
+    is_flag=True,
+    help="Run comprehensive cross-validation for both calculations.",
+)
+@click.option(
+    "--export-fa-csv",
+    is_flag=True,
+    help="Also generate the tax-software-ready FA declaration CSV.",
+)
+@click.pass_context
+def generate_reports(
+    ctx: click.Context,
+    financial_year: str,
+    detailed: bool,
+    output_format: str,
+    validate_first: bool,
+    validate: bool,
+    export_fa_csv: bool,
+) -> None:
+    """Generate RSU and Foreign Assets reports for one financial year.
+
+    Example:
+        equitywise generate-reports --financial-year FY25-26
+    """
+    financial_year = financial_year.upper()
+    try:
+        fa_calendar_year = _financial_year_to_fa_calendar_year(financial_year)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--financial-year") from exc
+
+    console.print(Panel.fit(
+        Text("Annual RSU + FA Reports", style="bold purple"),
+        title="[bold green]EquityWise[/bold green]",
+        border_style="purple",
+    ))
+    console.print(
+        f"[cyan]{financial_year}[/cyan] → RSU financial year "
+        f"and FA calendar year [cyan]{fa_calendar_year}[/cyan]"
+    )
+
+    console.print("\n[bold green]1/2 Generating RSU report...[/bold green]")
+    ctx.invoke(
+        calculate_rsu,
+        financial_year=financial_year,
+        detailed=detailed,
+        output_format=output_format,
+        validate_first=validate_first,
+        validate=validate,
+    )
+
+    console.print("\n[bold green]2/2 Generating Foreign Assets report...[/bold green]")
+    ctx.invoke(
+        calculate_fa,
+        calendar_year=fa_calendar_year,
+        detailed=detailed,
+        output_format=output_format,
+        validate_first=validate_first,
+        export_fa_csv=export_fa_csv,
+        validate=validate,
+    )
+
+    console.print(
+        "\n[bold green]Finished running the annual RSU and FA report commands.[/bold green]"
+    )
 
 
 def _display_single_year_results(results, detailed: bool, console) -> None:
@@ -1902,6 +2002,10 @@ def help_guide() -> None:
     console.print("\n🎯 [cyan]Interactive Mode:[/cyan]")
     console.print("   equitywise interactive")
     console.print("   [dim]→ Guided step-by-step calculation process[/dim]")
+
+    console.print("\n📦 [cyan]Combined Annual Reports:[/cyan]")
+    console.print("   equitywise generate-reports --financial-year FY24-25")
+    console.print("   [dim]→ Generate detailed RSU FY24-25 and FA calendar-year 2024 reports[/dim]")
     
     console.print("\n💰 [cyan]RSU Calculations:[/cyan]")
     console.print("   equitywise calculate-rsu")
@@ -1922,8 +2026,7 @@ def help_guide() -> None:
     
     console.print("\n📊 [cyan]Annual Tax Preparation:[/cyan]")
     console.print("   1. equitywise validate-data")
-    console.print("   2. equitywise calculate-rsu --financial-year FY24-25 --detailed --output-format both")
-    console.print("   3. equitywise calculate-fa --calendar-year 2024 --detailed --output-format both")
+    console.print("   2. equitywise generate-reports --financial-year FY24-25 --output-format both --validate")
     console.print("   [dim]→ Complete preparation for FY24-25 tax filing[/dim]")
     
     console.print("\n🔄 [cyan]Multi-Year Analysis:[/cyan]")
@@ -2126,6 +2229,24 @@ def _validate_financial_year_format(fy: str) -> bool:
         return year2 == year1 + 1
     except (ValueError, IndexError):
         return False
+
+
+def _financial_year_to_fa_calendar_year(financial_year: str) -> int:
+    """Map an Indian FY to the Schedule FA calendar year within that FY.
+
+    For example, FY25-26 covers April 2025 through March 2026, while its
+    Schedule FA reporting period is the calendar year ending December 2025.
+    """
+    normalized_fy = financial_year.upper()
+    if not _validate_financial_year_format(normalized_fy):
+        raise ValueError(
+            "expected FY<YY>-<YY> with consecutive years (for example FY25-26)"
+        )
+
+    calendar_year = 2000 + int(normalized_fy[2:4])
+    if not 2018 <= calendar_year <= 2030:
+        raise ValueError("supported financial years are FY18-19 through FY30-31")
+    return calendar_year
 
 
 def _validate_required_files() -> bool:
