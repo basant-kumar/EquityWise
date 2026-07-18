@@ -6,7 +6,7 @@ a comprehensive solution for calculating tax obligations on equity compensation 
 and Foreign Assets compliance under Indian tax law from E*Trade data.
 
 Key Features:
-- Interactive mode with guided workflows
+- One-command annual RSU and FA report generation
 - RSU tax calculations for Indian Financial Years (April-March)
 - Foreign Assets compliance for Calendar Years (January-December)
 - Multiple output formats (Excel, CSV, console)
@@ -21,17 +21,12 @@ Commands:
 - help-guide: Display comprehensive help documentation
 
 Example Usage:
-    # Interactive mode (recommended for first-time users)
-    uv run equitywise
-    
-    # Calculate RSU taxes for specific financial year
-    uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
+    # Recommended: detailed Excel + CSV reports with validation
+    uv run equitywise generate-reports --financial-year FY25-26
 
-    # Generate both annual RSU and FA reports with one command
-    uv run equitywise generate-reports --financial-year FY24-25
-    
-    # Check Foreign Assets declaration requirement
-    uv run equitywise calculate-fa --calendar-year 2024 --check-only
+    # Advanced: generate one report only
+    uv run equitywise calculate-rsu --financial-year FY25-26
+    uv run equitywise calculate-fa --calendar-year 2025
 
 Author: EquityWise Development Team
 License: MIT
@@ -103,42 +98,26 @@ def setup_logging(log_level: str, log_file: Optional[Path] = None) -> None:
 @click.version_option(version="1.1.0")
 @click.pass_context
 def cli(ctx: click.Context, log_level: str, log_file: Optional[str]) -> None:
-    """🎯 EquityWise - Smart Equity Tax Calculations
-    
-    A comprehensive Python tool to process E*Trade data and calculate:
-    • RSU, ESOP, ESPP tax obligations for Indian Financial Year filings
-    • Foreign Assets declarations for Calendar Year compliance  
-    • Complete bank reconciliation and professional reporting
-    
-    📁 REQUIRED DATA FILES:
-        BenefitHistory.xlsx     - E*Trade RSU vesting history
-        G&L statements         - E*Trade Gain & Loss reports
-        Reference Rates.csv    - SBI TTBR exchange rates
-        HistoricalData.csv     - Adobe stock price history
-    
-    🚀 QUICK START:
-        equitywise interactive                    # Guided setup
-        equitywise validate-data                  # Check file setup
-        equitywise generate-reports --financial-year FY24-25
-        equitywise calculate-rsu --financial-year FY24-25
-        equitywise calculate-fa --calendar-year 2024
-    
-    💡 COMMON WORKFLOWS:
-        # Complete tax preparation
-        equitywise generate-reports --financial-year FY24-25 --output-format both
-        
-        # Single year analysis
-        equitywise calculate-rsu --financial-year FY24-25 --detailed
-        
-        # Multi-year compliance check
-        equitywise calculate-fa --detailed
-    
-    🔧 TROUBLESHOOTING:
-        equitywise validate-data               # Check data files
-        equitywise --log-level DEBUG [command] # Verbose logging
-        equitywise interactive                 # Guided troubleshooting
-    
-    For detailed command help, use: equitywise COMMAND --help
+    """🎯 EquityWise - Generate RSU tax and Foreign Assets reports.
+
+    
+    RECOMMENDED - ONE COMMAND FOR A FINANCIAL YEAR:
+      equitywise generate-reports --financial-year FY25-26
+
+    This generates detailed RSU and FA reports in Excel and CSV, runs
+    cross-validation, and maps FY25-26 to FA calendar year 2025.
+
+    
+    SETUP AND TROUBLESHOOTING:
+      equitywise validate-data
+      equitywise --log-level DEBUG generate-reports --financial-year FY25-26
+
+    
+    ADVANCED - RUN ONE REPORT ONLY:
+      equitywise calculate-rsu --financial-year FY25-26
+      equitywise calculate-fa --calendar-year 2025
+
+    Use equitywise COMMAND --help for command-specific options.
     """
     # Ensure output directory exists
     settings.output_dir.mkdir(parents=True, exist_ok=True)
@@ -863,7 +842,7 @@ def calculate_fa(
 @click.option(
     "--output-format",
     type=click.Choice(["excel", "csv", "both"], case_sensitive=False),
-    default="excel",
+    default="both",
     show_default=True,
     help="Output format for both RSU and FA reports.",
 )
@@ -873,8 +852,9 @@ def calculate_fa(
     help="Validate required input files before each calculation.",
 )
 @click.option(
-    "--validate",
-    is_flag=True,
+    "--validate/--no-validate",
+    default=True,
+    show_default=True,
     help="Run comprehensive cross-validation for both calculations.",
 )
 @click.option(
@@ -892,10 +872,17 @@ def generate_reports(
     validate: bool,
     export_fa_csv: bool,
 ) -> None:
-    """Generate RSU and Foreign Assets reports for one financial year.
+    """Generate both RSU and FA reports for one financial year.
+
+    By default this one command creates detailed Excel and CSV reports and
+    validates both calculations. The financial year is automatically mapped to
+    the FA calendar year ending within it (FY25-26 uses FA calendar year 2025).
 
     Example:
         equitywise generate-reports --financial-year FY25-26
+
+    Use --summary-only, --output-format, or --no-validate only when you want to
+    override the recommended defaults.
     """
     financial_year = financial_year.upper()
     try:
@@ -2003,17 +1990,17 @@ def help_guide() -> None:
     console.print("   equitywise interactive")
     console.print("   [dim]→ Guided step-by-step calculation process[/dim]")
 
-    console.print("\n📦 [cyan]Combined Annual Reports:[/cyan]")
+    console.print("\n📦 [bold cyan]Recommended - Combined Annual Reports:[/bold cyan]")
     console.print("   equitywise generate-reports --financial-year FY24-25")
-    console.print("   [dim]→ Generate detailed RSU FY24-25 and FA calendar-year 2024 reports[/dim]")
+    console.print("   [dim]→ Detailed RSU FY24-25 + FA CY2024 reports, Excel + CSV, validated[/dim]")
     
-    console.print("\n💰 [cyan]RSU Calculations:[/cyan]")
+    console.print("\n💰 [cyan]Advanced - RSU Only:[/cyan]")
     console.print("   equitywise calculate-rsu")
     console.print("   equitywise calculate-rsu --financial-year FY24-25")
     console.print("   equitywise calculate-rsu --detailed")
     console.print("   [dim]→ Calculate vesting income and capital gains[/dim]")
     
-    console.print("\n🌍 [cyan]Foreign Assets Calculations:[/cyan]")
+    console.print("\n🌍 [cyan]Advanced - Foreign Assets Only:[/cyan]")
     console.print("   equitywise calculate-fa")
     console.print("   equitywise calculate-fa --calendar-year 2024")
     console.print("   equitywise calculate-fa --detailed")
@@ -2025,9 +2012,8 @@ def help_guide() -> None:
     console.print("="*60)
     
     console.print("\n📊 [cyan]Annual Tax Preparation:[/cyan]")
-    console.print("   1. equitywise validate-data")
-    console.print("   2. equitywise generate-reports --financial-year FY24-25 --output-format both --validate")
-    console.print("   [dim]→ Complete preparation for FY24-25 tax filing[/dim]")
+    console.print("   equitywise generate-reports --financial-year FY24-25")
+    console.print("   [dim]→ One command generates and validates both annual reports[/dim]")
     
     console.print("\n🔄 [cyan]Multi-Year Analysis:[/cyan]")
     console.print("   1. equitywise calculate-rsu --detailed")
@@ -2051,6 +2037,8 @@ def help_guide() -> None:
     console.print("   --output-format excel   Generate Excel reports")
     console.print("   --output-format csv     Generate CSV files")
     console.print("   --output-format both    Generate both formats")
+    console.print("   --no-validate           Skip cross-validation")
+    console.print("   --summary-only          Omit detailed transaction sheets")
     console.print("   --validate-first        Check files before calculations")
     console.print("   --log-level DEBUG       Verbose error information")
     
@@ -2126,7 +2114,7 @@ def help_guide() -> None:
     console.print("   equitywise --log-file debug.log COMMAND")
     console.print("   [dim]→ Save detailed logs for analysis[/dim]")
     
-    console.print("\n✨ [bold green]Happy calculating! Use 'equitywise interactive' to get started.[/bold green]")
+    console.print("\n✨ [bold green]Start with: equitywise generate-reports --financial-year FY25-26[/bold green]")
 
 
 @cli.command()

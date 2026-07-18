@@ -57,6 +57,50 @@ def test_generate_reports_invokes_both_existing_commands():
     )
 
 
+def test_generate_reports_defaults_to_complete_validated_output():
+    runner = CliRunner()
+
+    with (
+        patch.object(calculate_rsu, "callback") as rsu_callback,
+        patch.object(calculate_fa, "callback") as fa_callback,
+    ):
+        result = runner.invoke(
+            cli, ["generate-reports", "--financial-year", "FY25-26"]
+        )
+
+    assert result.exit_code == 0, result.output
+    rsu_callback.assert_called_once_with(
+        financial_year="FY25-26",
+        detailed=True,
+        output_format="both",
+        validate_first=False,
+        validate=True,
+    )
+    fa_callback.assert_called_once_with(
+        calendar_year=2025,
+        detailed=True,
+        output_format="both",
+        validate_first=False,
+        export_fa_csv=False,
+        validate=True,
+    )
+
+
+def test_help_recommends_the_single_combined_command():
+    runner = CliRunner()
+
+    root_help = runner.invoke(cli, ["--help"])
+    assert root_help.exit_code == 0
+    assert "RECOMMENDED - ONE COMMAND FOR A FINANCIAL YEAR" in root_help.output
+    assert "generate-reports --financial-year FY25-26" in root_help.output
+
+    command_help = runner.invoke(cli, ["generate-reports", "--help"])
+    assert command_help.exit_code == 0
+    assert "detailed Excel and CSV reports" in command_help.output
+    assert "--validate / --no-validate" in command_help.output
+    assert "default: validate" in command_help.output
+
+
 def test_generate_reports_rejects_invalid_or_unsupported_fy():
     runner = CliRunner()
 

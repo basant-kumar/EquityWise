@@ -94,21 +94,21 @@ uv run equitywise --help
 ### Step 5: Basic Usage
 
 ```bash
-# Interactive mode (recommended for first-time users)
-uv run equitywise
+# Recommended: generate both RSU and FA reports with one command
+# Defaults: detailed Excel + CSV reports with cross-validation
+uv run equitywise generate-reports --financial-year FY25-26
 
-# Generate detailed RSU and FA Excel reports for one financial year
-uv run equitywise generate-reports --financial-year FY24-25
+# Optional: verify the input-file setup first
+uv run equitywise validate-data
 
-# Calculate RSU taxes for FY 2024-25
-uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
-
-# Calculate Foreign Assets for Calendar Year 2024
-uv run equitywise calculate-fa --calendar-year 2024 --output-format both
-
-# Get comprehensive help
-uv run equitywise help-guide
+# Advanced: run only one report
+uv run equitywise calculate-rsu --financial-year FY25-26
+uv run equitywise calculate-fa --calendar-year 2025
 ```
+
+`FY25-26` automatically generates the RSU report for FY25-26 and the Foreign
+Assets report for calendar year 2025. Use `--summary-only`, `--output-format`,
+or `--no-validate` only when you need to override the recommended defaults.
 
 ### 🚨 **Installation Troubleshooting**
 
@@ -137,7 +137,7 @@ pip install -e .
 
 # Example usage with pip:
 python -m equitywise --help
-python -m equitywise calculate-rsu --financial-year FY24-25
+python -m equitywise generate-reports --financial-year FY25-26
 ```
 
 **Issue 2: "Python version too old"**
@@ -237,7 +237,22 @@ The script detects the last date in each CSV and only fetches what's missing —
 
 ## 💡 **Usage Examples**
 
-### RSU Tax Calculation
+### Recommended: RSU and FA Together
+
+```bash
+# One FY input generates both reports:
+# - RSU report for FY25-26
+# - Foreign Assets report for calendar year 2025
+# Detailed Excel + CSV output and validation are enabled by default.
+uv run equitywise generate-reports --financial-year FY25-26
+
+# Optional overrides
+uv run equitywise generate-reports --financial-year FY25-26 --summary-only
+uv run equitywise generate-reports --financial-year FY25-26 --output-format excel
+uv run equitywise generate-reports --financial-year FY25-26 --no-validate
+```
+
+### Advanced: RSU Only
 
 ```bash
 # Calculate for specific financial year with detailed output
@@ -250,9 +265,6 @@ uv run equitywise calculate-rsu \
 uv run equitywise calculate-rsu \
   --financial-year FY24-25 \
   --validate
-
-# Interactive mode for guided calculation
-uv run equitywise calculate-rsu --interactive
 ```
 
 **Sample Output:**
@@ -265,22 +277,18 @@ uv run equitywise calculate-rsu --interactive
 📊 Short-term: ₹89,234.12 | Long-term: ₹178,656.33
 ```
 
-### Foreign Assets Declaration
+### Advanced: Foreign Assets Only
 
 ```bash
 # Calculate FA requirement for calendar year
 uv run equitywise calculate-fa \
   --calendar-year 2024 \
-  --as-of-date 2024-12-31 \
   --output-format both
 
 # Enable data validation for FA calculations (recommended)
 uv run equitywise calculate-fa \
   --calendar-year 2024 \
   --validate
-
-# Check if FA declaration is required
-uv run equitywise calculate-fa --calendar-year 2024 --check-only
 
 # Generate CSV export for direct import into FA declaration forms
 uv run equitywise calculate-fa \
@@ -316,14 +324,12 @@ EquityWise includes a powerful validation system that cross-validates data consi
 ### Using Validation
 
 ```bash
-# Enable validation for RSU calculations (recommended)
-uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+# Recommended combined command validates RSU and FA by default
+uv run equitywise generate-reports --financial-year FY25-26
 
-# Enable validation for FA calculations (recommended)  
-uv run equitywise calculate-fa --calendar-year 2024 --validate
-
-# Combined validation with detailed output
-uv run equitywise calculate-rsu --financial-year FY24-25 --validate --detailed
+# Advanced: validate only one calculation
+uv run equitywise calculate-rsu --financial-year FY25-26 --validate
+uv run equitywise calculate-fa --calendar-year 2025 --validate
 ```
 
 ### Sample Validation Output
@@ -371,18 +377,17 @@ uv run equitywise calculate-rsu --financial-year FY24-25 --validate --detailed
 
 **`generate-reports`** - Generate RSU and FA reports together
 ```bash
-# FY24-25 maps to RSU FY24-25 and FA calendar year 2024
-uv run equitywise generate-reports --financial-year FY24-25
+# Recommended: detailed Excel + CSV reports with validation
+# FY25-26 maps to RSU FY25-26 and FA calendar year 2025
+uv run equitywise generate-reports --financial-year FY25-26
 
-# Generate both Excel and CSV outputs with cross-validation
-uv run equitywise generate-reports \
-  --financial-year FY24-25 \
-  --output-format both \
-  --validate
+# Generate Excel only or skip validation when explicitly needed
+uv run equitywise generate-reports --financial-year FY25-26 --output-format excel
+uv run equitywise generate-reports --financial-year FY25-26 --no-validate
 
 # Generate summary-only workbooks and an FA declaration CSV
 uv run equitywise generate-reports \
-  --financial-year FY24-25 \
+  --financial-year FY25-26 \
   --summary-only \
   --export-fa-csv
 ```
@@ -395,15 +400,12 @@ uv run equitywise calculate-rsu --financial-year FY24-25 --output-format excel
 # Calculate with comprehensive data validation (recommended)
 uv run equitywise calculate-rsu --financial-year FY24-25 --validate
 
-# Interactive mode with detailed breakdown
-uv run equitywise calculate-rsu --interactive --detailed
+# Include detailed transaction output
+uv run equitywise calculate-rsu --financial-year FY24-25 --detailed
 ```
 
 **`calculate-fa`** - Calculate Foreign Assets compliance
 ```bash
-# Check FA declaration requirement for 2024
-uv run equitywise calculate-fa --calendar-year 2024 --check-only
-
 # Calculate with comprehensive data validation (recommended)
 uv run equitywise calculate-fa --calendar-year 2024 --validate
 
@@ -425,35 +427,31 @@ uv run equitywise --log-level DEBUG validate-data
 # Show complete help guide
 uv run equitywise help-guide
 
-# Show specific section
-uv run equitywise help-guide --section cli
+# Show the recommended combined-command options
+uv run equitywise generate-reports --help
 ```
 
 ### Common Options
 
 **Output Format Options:**
-- `--output-format excel` - Generate Excel reports with enhanced formatting (recommended, default)
+- `generate-reports` defaults to `--output-format both`
+- Individual commands default to `--output-format excel`
+- `--output-format excel` - Generate Excel reports with enhanced formatting
 - `--output-format csv` - Generate CSV files for analysis
 - `--output-format both` - Generate both Excel and CSV
 
 **Data Validation Options:**
-- `--validate` - Enable comprehensive cross-validation between data sources (recommended)
+- `generate-reports` validates by default; use `--no-validate` to opt out
+- Individual commands use `--validate` to enable cross-validation
 
-**Date Range Options:**
+**Year Options:**
 - `--financial-year FY24-25` - Indian Financial Year (April 2024 to March 2025)
 - `--calendar-year 2024` - Calendar year (January to December 2024)
-- `--start-date 2024-04-01` - Custom start date (YYYY-MM-DD format)
-- `--end-date 2025-03-31` - Custom end date (YYYY-MM-DD format)
 
 **Mode and Display Options:**
 - `--detailed` - Include detailed breakdowns and calculations
-- `--interactive` - Enable guided interactive mode
+- `--summary-only` - Combined-command option to omit detailed sheets
 - `--log-level DEBUG` - Show detailed logging and progress information
-- `--check-only` - Quick check without generating full reports
-
-**File and Directory Options:**
-- `--output-dir reports/` - Specify custom output directory
-- `--config-file config.toml` - Use custom configuration file
 
 ## 📊 **Report Outputs**
 
@@ -527,8 +525,7 @@ EquityWise includes multiple layers of data validation for maximum accuracy:
 # Validate all data files
 uv run equitywise validate-data
 
-# Check specific file types
-uv run equitywise validate-data --file-type benefit-history
+# Include detailed diagnostics
 uv run equitywise --log-level DEBUG validate-data
 ```
 
@@ -540,12 +537,16 @@ uv run equitywise --log-level DEBUG validate-data
 - ✅ Cross-file data consistency
 
 ### Comprehensive Cross-Validation
-The `--validate` flag enables advanced validation across all data sources:
+The combined command enables advanced validation across all data sources by
+default:
 
 ```bash
-# Enable cross-validation (recommended for accuracy)
-uv run equitywise calculate-rsu --financial-year FY24-25 --validate
-uv run equitywise calculate-fa --calendar-year 2024 --validate
+# Generate and validate both reports
+uv run equitywise generate-reports --financial-year FY25-26
+
+# Advanced: validate one report only
+uv run equitywise calculate-rsu --financial-year FY25-26 --validate
+uv run equitywise calculate-fa --calendar-year 2025 --validate
 ```
 
 **Advanced Validation Features:**
@@ -592,7 +593,7 @@ uv run equitywise --log-level DEBUG validate-data
 **Q: "Validation warnings about missing transactions"**
 ```bash
 # Use the validation system to identify data inconsistencies:
-uv run equitywise calculate-rsu --financial-year FY24-25 --validate
+uv run equitywise generate-reports --financial-year FY25-26
 
 # Check that:
 # - BenefitHistory.xlsx is complete and up-to-date
@@ -603,7 +604,7 @@ uv run equitywise calculate-rsu --financial-year FY24-25 --validate
 
 ### Performance Tips
 
-- **Large datasets**: Use `--batch-size 1000` for files with >5000 records
+- **Large datasets**: Process one financial year at a time with `generate-reports`
 - **Memory issues**: Process one year at a time for multi-year calculations
 - **Speed optimization**: Place data files on SSD storage
 
@@ -614,6 +615,7 @@ uv run equitywise calculate-rsu --financial-year FY24-25 --validate
 uv run equitywise help-guide
 
 # Command-specific help  
+uv run equitywise generate-reports --help
 uv run equitywise calculate-rsu --help
 uv run equitywise calculate-fa --help
 
