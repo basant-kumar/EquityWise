@@ -32,6 +32,12 @@ def sample_sbi_rates() -> List[SBIRateRecord]:
             'Rate': 83.45
         }),
         SBIRateRecord(**{
+            'Date': date(2024, 6, 30),
+            'Time': '1:00:00 PM',
+            'Currency Pairs': 'INR / 1 USD',
+            'Rate': 83.55
+        }),
+        SBIRateRecord(**{
             'Date': date(2024, 7, 15),
             'Time': '1:00:00 PM',
             'Currency Pairs': 'INR / 1 USD', 
@@ -48,6 +54,12 @@ def sample_sbi_rates() -> List[SBIRateRecord]:
             'Time': '1:00:00 PM',
             'Currency Pairs': 'INR / 1 USD', 
             'Rate': 86.64
+        }),
+        SBIRateRecord(**{
+            'Date': date(2025, 3, 31),
+            'Time': '1:00:00 PM',
+            'Currency Pairs': 'INR / 1 USD',
+            'Rate': 86.50
         }),
         SBIRateRecord(**{
             'Date': date(2025, 4, 15),
@@ -201,7 +213,7 @@ class TestRSUCalculatorFormulas:
 
     def test_initialization(self, rsu_calculator):
         """Test calculator initialization with proper data structures."""
-        assert len(rsu_calculator.sbi_rates) == 6  # Updated count
+        assert len(rsu_calculator.sbi_rates) == 8
         assert len(rsu_calculator.stock_data) == 6  # Updated count
         assert len(rsu_calculator.vesting_events) == 0  # Should start empty
 
@@ -291,22 +303,22 @@ class TestRSUCalculatorFormulas:
         assert sale1.sale_proceeds_usd == 1688.91
         assert sale1.sale_price_usd == 562.97  # Per share
         
-        # Formula 2: Sale Proceeds (INR) = Sale_Proceeds_USD × Sale_Date_Exchange_Rate
-        expected_proceeds_inr = 1688.91 * 83.60  # Using 7/15 rate
+        # Formula 2: Rule 115 uses the prior month-end exchange rate.
+        expected_proceeds_inr = 1688.91 * 83.55
         assert abs(sale1.sale_proceeds_inr - expected_proceeds_inr) < 1.0
         
         # Formula 3: Cost Basis (USD) - from G&L adjusted cost basis
         assert sale1.cost_basis_usd == 1420.68
         
-        # Formula 4: Cost Basis (INR) = Cost_Basis_USD × Sale_Date_Exchange_Rate
-        expected_cost_basis_inr = 1420.68 * 83.60
+        # Formula 4: Cost basis uses the same Rule 115 rate.
+        expected_cost_basis_inr = 1420.68 * 83.55
         assert abs(sale1.cost_basis_inr - expected_cost_basis_inr) < 1.0
         
         # Formula 5: Capital Gain (USD) - from G&L adjusted gain/loss (preferred)
         assert sale1.capital_gain_usd == 268.23
         
-        # Formula 7: Capital Gain (INR) = Capital_Gain_USD × Sale_Date_Exchange_Rate
-        expected_gain_inr = 268.23 * 83.60
+        # Formula 7: Capital gain uses the Rule 115 rate.
+        expected_gain_inr = 268.23 * 83.55
         assert abs(sale1.capital_gain_inr - expected_gain_inr) < 1.0
         
         # Formula 8: Holding Period Classification

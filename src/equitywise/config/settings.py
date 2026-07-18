@@ -176,6 +176,11 @@ class Settings(BaseSettings):
         default=Path("data/user_data/rsu_documents/RSU_FY-23-24.pdf"),
         description="Path to RSU PDF statement file (FY23-24) from Excelity portal - legacy compatibility"
     )
+
+    @property
+    def esop_pdf_paths(self) -> List[Path]:
+        """Backward-compatible alias for legacy ESOP configuration clients."""
+        return self.rsu_pdf_paths
     
     # Output settings
     output_dir: Path = Field(
@@ -438,6 +443,21 @@ class Settings(BaseSettings):
         existing_paths = [path for path in self.gl_statements_paths if path.exists()]
         if not existing_paths:
             logger.warning("No G&L files found in configured paths either")
+        return existing_paths
+
+    def get_bank_statement_files(self, use_auto_discovery: bool = True) -> List[Path]:
+        """Get bank statements using auto-discovery with legacy fallback."""
+        if use_auto_discovery:
+            discovered = self.discover_bank_statement_files()
+            if discovered:
+                return discovered
+            logger.warning(
+                "No bank statements found via auto-discovery, falling back to configured paths"
+            )
+
+        existing_paths = [path for path in self.bank_statement_paths if path.exists()]
+        if not existing_paths:
+            logger.warning("No bank statements found in configured paths either")
         return existing_paths
     
     # ===================================================================================

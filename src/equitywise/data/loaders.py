@@ -602,31 +602,85 @@ class RSULoader(DataLoader):
 
 class BankStatementLoader(DataLoader):
     """Loader for bank statement files."""
+
+    COLUMN_ALIASES = {
+        "S No.": {"sno", "srlno", "srno", "serialno"},
+        "Value Date": {"valuedate"},
+        "Transaction Date": {"transactiondate", "trandate"},
+        "Cheque Number": {"chequenumber", "chequeno", "chqno"},
+        "Transaction Remarks": {
+            "transactionremarks", "particulars", "narration", "description"
+        },
+        "Withdrawal Amount (INR )": {
+            "withdrawalamountinr", "withdrawalamount", "debitamount", "debit", "dr"
+        },
+        "Deposit Amount (INR )": {
+            "depositamountinr", "depositamount", "creditamount", "credit", "cr"
+        },
+        "Balance (INR )": {"balanceinr", "balance", "bal"},
+    }
+
+    @staticmethod
+    def _normalize_column_name(value: Any) -> str:
+        return ''.join(character for character in str(value).lower() if character.isalnum())
+
+    @classmethod
+    def _canonical_column_name(cls, value: Any) -> Optional[str]:
+        normalized = cls._normalize_column_name(value)
+        for canonical, aliases in cls.COLUMN_ALIASES.items():
+            if normalized in aliases:
+                return canonical
+        return None
+
+    @classmethod
+    def _find_header_row(cls, df_raw: pd.DataFrame) -> Optional[int]:
+        for row_index, row in df_raw.iterrows():
+            canonical_columns = {
+                cls._canonical_column_name(value)
+                for value in row.dropna().tolist()
+            }
+            if {
+                "S No.", "Transaction Date", "Transaction Remarks",
+                "Deposit Amount (INR )", "Balance (INR )",
+            }.issubset(canonical_columns):
+                return row_index
+        return None
     
     def _load_file(self) -> pd.DataFrame:
-        """Load bank statement Excel file with proper header detection."""
+        """Load ICICI/Axis-style bank statements with header auto-detection."""
         try:
-            # Read the raw file first
-            df_raw = pd.read_excel(self.file_path)
-            
-            # Find the header row by looking for the transaction data headers
-            header_row = None
-            for i, row in df_raw.iterrows():
-                row_values = [str(val).lower() for val in row.dropna().tolist()]
-                if 's no.' in ' '.join(row_values) and 'value date' in ' '.join(row_values):
-                    header_row = i
-                    logger.info(f"Found bank statement header at row {i}")
-                    break
+            df_raw = pd.read_excel(self.file_path, header=None)
+            header_row = self._find_header_row(df_raw)
             
             if header_row is None:
                 raise ValueError("Could not find bank statement header row")
-            
-            # Re-read with proper header
+
+            logger.info(f"Found bank statement header at row {header_row}")
             df = pd.read_excel(self.file_path, header=header_row)
-            
-            # Clean up the dataframe
+
+            rename_map = {}
+            for column in df.columns:
+                canonical = self._canonical_column_name(column)
+                if canonical:
+                    rename_map[column] = canonical
+            df = df.rename(columns=rename_map)
+
+            if "Value Date" not in df.columns and "Transaction Date" in df.columns:
+                df["Value Date"] = df["Transaction Date"]
+            if "Cheque Number" not in df.columns:
+                df["Cheque Number"] = None
+
+            required_columns = {
+                "S No.", "Value Date", "Transaction Date", "Transaction Remarks",
+                "Withdrawal Amount (INR )", "Deposit Amount (INR )", "Balance (INR )",
+            }
+            missing_columns = required_columns - set(df.columns)
+            if missing_columns:
+                raise ValueError(
+                    f"Missing required bank statement columns: {sorted(missing_columns)}"
+                )
+
             df = self._clean_bank_statement(df)
-            
             logger.info(f"Bank statement file has {len(df)} rows and {len(df.columns)} columns")
             return df
             
@@ -636,33 +690,31 @@ class BankStatementLoader(DataLoader):
     
     def _clean_bank_statement(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and process bank statement data."""
-        # Remove rows that are just headers or empty
-        # Use column 1 (serial number column) since column 0 is always NaN
-        df_clean = df.dropna(subset=[df.columns[1]])  # Remove rows with empty serial number column
-        
-        # Remove rows where the second column (index 1) is not numeric (serial number)
-        # Based on debug output, serial numbers are in column 1, not column 0
-        def is_numeric_row(x):
-            try:
-                if pd.isna(x):
-                    return False
-                int(str(x).replace('.0', ''))  # Handle float serial numbers
-                return True
-            except (ValueError, TypeError):
-                return False
-        
-        # Filter by column 1 (serial number column) and remove header row
-        df_clean = df_clean[df_clean.iloc[:, 1].apply(is_numeric_row)]
-        
-        # Reset index
+        serial_numbers = pd.to_numeric(df["S No."], errors='coerce')
+        df_clean = df[serial_numbers.notna()].copy()
+        df_clean["S No."] = serial_numbers[serial_numbers.notna()].astype(int)
+
+        for column in [
+            "Withdrawal Amount (INR )", "Deposit Amount (INR )", "Balance (INR )"
+        ]:
+            cleaned_values = (
+                df_clean[column]
+                .astype(str)
+                .str.replace(',', '', regex=False)
+                .str.strip()
+            )
+            df_clean[column] = pd.to_numeric(cleaned_values, errors='coerce').fillna(0.0)
+
         df_clean = df_clean.reset_index(drop=True)
         
         logger.info(f"Cleaned bank statement: {len(df_clean)} transaction rows from {len(df)} total")
         return df_clean
     
-    def get_validated_records(self, file_path: str) -> List[BankStatementRecord]:
+    def get_validated_records(self, file_path: Optional[str] = None) -> List[BankStatementRecord]:
         """Load and validate bank statement records."""
-        loader = BankStatementLoader(Path(file_path))
+        loader = self
+        if file_path and Path(file_path) != self.file_path:
+            loader = BankStatementLoader(Path(file_path))
         df = loader.load_data()
         
         validation_errors = []
@@ -670,16 +722,15 @@ class BankStatementLoader(DataLoader):
         
         for i, row in df.iterrows():
             try:
-                # Map the DataFrame columns to the model fields (corrected column indices)
                 record_data = {
-                    "S No.": row.iloc[1],  # Serial number is in column 1
-                    "Value Date": row.iloc[2],
-                    "Transaction Date": row.iloc[3],
-                    "Cheque Number": row.iloc[4],
-                    "Transaction Remarks": row.iloc[5],
-                    "Withdrawal Amount (INR )": row.iloc[6] if pd.notna(row.iloc[6]) else 0.0,
-                    "Deposit Amount (INR )": row.iloc[7] if pd.notna(row.iloc[7]) else 0.0,
-                    "Balance (INR )": row.iloc[8]
+                    "S No.": row["S No."],
+                    "Value Date": row["Value Date"],
+                    "Transaction Date": row["Transaction Date"],
+                    "Cheque Number": row["Cheque Number"],
+                    "Transaction Remarks": row["Transaction Remarks"],
+                    "Withdrawal Amount (INR )": row["Withdrawal Amount (INR )"],
+                    "Deposit Amount (INR )": row["Deposit Amount (INR )"],
+                    "Balance (INR )": row["Balance (INR )"],
                 }
                 
                 record = BankStatementRecord(**record_data)

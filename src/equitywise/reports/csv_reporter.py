@@ -192,7 +192,7 @@ class CSVReporter:
                 'Grant Number': event.grant_number,
                 'Shares Sold': f"{event.quantity_sold:.0f}",
                 'Sale Price (USD)': f"{event.sale_price_usd:.2f}",
-                'Exchange Rate': f"{event.exchange_rate_sale:.4f}",
+                'Rule 115 Exchange Rate': f"{(event.capital_gains_exchange_rate or event.exchange_rate_sale):.4f}",
                 'Sale Proceeds (USD)': f"{event.sale_proceeds_usd:.2f}",
                 'Sale Proceeds (INR)': f"{event.sale_proceeds_inr:.2f}",
                 'Cost Basis (USD)': f"{event.cost_basis_usd:.2f}",
@@ -201,7 +201,8 @@ class CSVReporter:
                 'Capital Gain (INR)': f"{event.capital_gain_inr:.2f}",
                 'Holding Period (Days)': f"{event.holding_period_days}",
                 'Gain Type': event.gain_type,
-                'Financial Year': event.financial_year
+                'Financial Year': event.financial_year,
+                'Sale-Date Exchange Rate': f"{event.exchange_rate_sale:.4f}"
             })
         
         df = pd.DataFrame(sale_data)

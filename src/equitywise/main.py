@@ -275,11 +275,13 @@ def calculate_rsu(
                     date_key = sale.sale_date
                     date_proceedings[date_key]['total_shares'] += sale.quantity_sold
                     date_proceedings[date_key]['total_proceeds_usd'] += sale.sale_price_usd * sale.quantity_sold
-                    date_proceedings[date_key]['total_proceeds_inr'] += sale.sale_proceeds_inr
+                    date_proceedings[date_key]['total_proceeds_inr'] += (
+                        sale.sale_proceeds_usd * sale.exchange_rate_sale
+                    )
                     date_proceedings[date_key]['exchange_rate'] = sale.exchange_rate_sale
                     date_proceedings[date_key]['transaction_count'] += 1
                 
-                for bank_path in settings.bank_statement_paths:
+                for bank_path in settings.get_bank_statement_files(use_auto_discovery=True):
                     if bank_path.exists():
                         loader = BankStatementLoader(bank_path)
                         records = loader.get_validated_records(str(bank_path))
@@ -448,7 +450,7 @@ def calculate_rsu(
                 
                 # Load G&L statement data  
                 gl_records = []
-                for gl_path in settings.gl_statements_paths:
+                for gl_path in settings.get_gl_statement_files(use_auto_discovery=True):
                     if gl_path.exists():
                         gl_loader = GLStatementLoader(gl_path)
                         gl_file_records = gl_loader.get_validated_records()
@@ -1133,8 +1135,8 @@ def _display_vesting_events_table(vesting_events, console) -> None:
     total_vesting_inr = 0
     
     for vesting in vesting_events:
-        vest_value_usd = vesting.vest_fmv_usd * vesting.vested_quantity
-        vest_value_inr = vesting.vest_fmv_inr * vesting.vested_quantity
+        vest_value_usd = vesting.taxable_gain_usd
+        vest_value_inr = vesting.taxable_gain_inr
         total_shares += vesting.vested_quantity
         total_value_usd += vest_value_usd
         total_value_inr += vest_value_inr
@@ -1193,7 +1195,7 @@ def _display_sale_events_table(sale_events, console) -> None:
     sales_table.add_column("Hold Period", style="dim", justify="center", min_width=8, max_width=15, no_wrap=False)
     sales_table.add_column("Cost Basis", style="yellow", justify="right", min_width=10, max_width=20, no_wrap=False)
     sales_table.add_column("Sale Price", style="green", justify="right", min_width=10, max_width=20, no_wrap=False)
-    sales_table.add_column("Sale Rate", style="magenta", justify="right", min_width=10, max_width=20, no_wrap=False)
+    sales_table.add_column("Rule 115 Rate", style="magenta", justify="right", min_width=10, max_width=20, no_wrap=False)
     sales_table.add_column("USD Proceeds", style="green", justify="right", min_width=11, max_width=22, no_wrap=False)
     sales_table.add_column("INR Proceeds", style="green", justify="right", min_width=12, max_width=25, no_wrap=False)
     sales_table.add_column("Capital Gain (USD)", justify="right", min_width=13, max_width=25, no_wrap=False)  # Wrap instead of ellipsis
@@ -1211,9 +1213,9 @@ def _display_sale_events_table(sale_events, console) -> None:
     for sale in sale_events:
         holding_days = (sale.sale_date - sale.acquisition_date).days
         gain_color = "red" if sale.capital_gain_inr < 0 else "green"
-        cost_basis = sale.vest_fmv_inr * sale.quantity_sold
-        usd_proceeds = sale.sale_price_usd * sale.quantity_sold
-        capital_gain_usd = sale.capital_gain_inr / sale.exchange_rate_sale
+        cost_basis = sale.cost_basis_inr
+        usd_proceeds = sale.sale_proceeds_usd
+        capital_gain_usd = sale.capital_gain_usd
         
         total_shares_sold += sale.quantity_sold
         total_cost_basis += cost_basis
@@ -1230,7 +1232,7 @@ def _display_sale_events_table(sale_events, console) -> None:
             f"{holding_days}d",
             f"₹{cost_basis:,.0f}",
             f"${sale.sale_price_usd:.2f}",
-            f"₹{sale.exchange_rate_sale:.4f}",
+            f"₹{(sale.capital_gains_exchange_rate or sale.exchange_rate_sale):.4f}",
             f"${usd_proceeds:.2f}",
             f"₹{sale.sale_proceeds_inr:,.0f}",
             f"[{gain_color}]${capital_gain_usd:,.2f}[/{gain_color}]",
@@ -1285,7 +1287,9 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
         date_key = sale.sale_date
         date_proceedings[date_key]['total_shares'] += sale.quantity_sold
         date_proceedings[date_key]['total_proceeds_usd'] += sale.sale_price_usd * sale.quantity_sold
-        date_proceedings[date_key]['total_proceeds_inr'] += sale.sale_proceeds_inr
+        date_proceedings[date_key]['total_proceeds_inr'] += (
+            sale.sale_proceeds_usd * sale.exchange_rate_sale
+        )
         date_proceedings[date_key]['exchange_rate'] = sale.exchange_rate_sale  # Use the last rate for the date
         date_proceedings[date_key]['transaction_count'] += 1
 
@@ -2164,12 +2168,24 @@ def _validate_required_files() -> bool:
         ("Adobe Stock Data", settings.adobe_stock_data_path),
     ]
     
-    # Add G&L statements
-    for i, path in enumerate(settings.gl_statements_paths, 1):
+    # Validate the same auto-discovered inputs used by the calculators.
+    rsu_files = settings.get_rsu_files(use_auto_discovery=True)
+    gl_files = settings.get_gl_statement_files(use_auto_discovery=True)
+
+    for i, path in enumerate(rsu_files, 1):
+        files_to_check.append((f"RSU Statement {i}", path))
+
+    for i, path in enumerate(gl_files, 1):
         files_to_check.append((f"G&L Statement {i}", path))
+
+    missing_source_groups = []
+    if not rsu_files:
+        missing_source_groups.append(("RSU Statement", settings.rsu_documents_dir))
+    if not gl_files:
+        missing_source_groups.append(("G&L Statement", settings.gl_statements_dir))
     
-    all_valid = True
-    missing_files = []
+    missing_files = list(missing_source_groups)
+    all_valid = not missing_source_groups
     
     for name, path in files_to_check:
         if not path.exists():
@@ -2210,6 +2226,11 @@ def _show_file_recovery_suggestions(missing_files: list) -> None:
             "Download Gain & Loss statements from E*Trade",
             "Go to E*Trade → Accounts → Documents → Tax Documents",
             "Download for each year you have RSU activities"
+        ],
+        "RSU Statement": [
+            "Download the Stock Perquisites Statement from Excelity",
+            "Choose either PDF or Excel format",
+            "Save it in the RSU documents directory"
         ]
     }
     

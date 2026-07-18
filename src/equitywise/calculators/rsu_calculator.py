@@ -71,10 +71,11 @@ class SaleEvent(BaseModel):
     capital_gain_usd: float  # Sale proceeds - cost basis (USD)
     capital_gain_inr: float  # Capital gain in INR
     gain_type: str  # "Short-term" or "Long-term"
-    exchange_rate_sale: float  # USD to INR rate on sale date
-    vest_fmv_usd: float  # Original FMV per share when vested (USD)
-    vest_exchange_rate: float  # Exchange rate when originally vested
-    vest_fmv_inr: float  # Original FMV per share when vested (INR)
+    exchange_rate_sale: float  # SBI TTBR rate on the sale date (reconciliation)
+    capital_gains_exchange_rate: Optional[float] = None  # Rule 115 tax rate
+    vest_fmv_usd: float = 0.0  # Original FMV per share when vested (USD)
+    vest_exchange_rate: float = 0.0  # Exchange rate when originally vested
+    vest_fmv_inr: float = 0.0  # Original FMV per share when vested (INR)
     financial_year: str  # Indian FY of sale
     
     @property
@@ -85,7 +86,16 @@ class SaleEvent(BaseModel):
     @property
     def is_long_term(self) -> bool:
         """Check if this is a long-term capital gain (>24 months for equity)."""
-        return self.holding_period_days > (24 * 30)  # Approximate 24 months
+        try:
+            two_year_anniversary = self.acquisition_date.replace(
+                year=self.acquisition_date.year + 2
+            )
+        except ValueError:  # February 29 -> February 28 two years later
+            two_year_anniversary = self.acquisition_date.replace(
+                year=self.acquisition_date.year + 2,
+                day=28,
+            )
+        return self.sale_date > two_year_anniversary
 
 
 class RSUCalculationSummary(BaseModel):
@@ -161,6 +171,32 @@ class RSUCalculator:
                 return self.sbi_rates[next_date]
         
         logger.warning(f"No exchange rate found for {target_date} within 7 days")
+        return None
+
+    def get_capital_gains_exchange_rate(self, transfer_date: Date) -> Optional[float]:
+        """Get the Rule 115 rate for capital gains on a foreign asset transfer.
+
+        The specified date is the last day of the month immediately preceding
+        the month in which the transfer took place. If that date has no rate
+        (for example, a weekend or holiday), use the latest available rate on
+        or before it without crossing into the transfer month.
+        """
+        specified_date = transfer_date.replace(day=1) - timedelta(days=1)
+
+        for days_offset in range(0, 8):
+            rate_date = specified_date - timedelta(days=days_offset)
+            if rate_date in self.sbi_rates:
+                if rate_date != specified_date:
+                    logger.debug(
+                        f"Using exchange rate from {rate_date} for Rule 115 "
+                        f"specified date {specified_date}"
+                    )
+                return self.sbi_rates[rate_date]
+
+        logger.warning(
+            f"No exchange rate found on or before Rule 115 specified date "
+            f"{specified_date} within 7 days"
+        )
         return None
     
     def get_stock_price(self, target_date: Date) -> Optional[float]:
@@ -319,8 +355,9 @@ class RSUCalculator:
                 # Formula 1: Individual share value in INR
                 vest_fmv_inr = vest_fmv_usd * exchange_rate
                 
-                # Formula 2: Total USD value of vested shares
-                total_taxable_gain_usd = vest_fmv_usd * vested_quantity
+                # Formula 2: Use the statement's exact gross USD total. This
+                # preserves employer rounding and includes withheld shares.
+                total_taxable_gain_usd = record.total_usd
                 
                 # Formula 3: Use exact INR total from RSU document (preferred)
                 total_taxable_gain_inr = record.total_inr  # Most accurate - from RSU PDF
@@ -355,6 +392,13 @@ class RSUCalculator:
         logger.info(f"Successfully processed {len(vesting_events)} RSU vesting events")
         logger.info(f"Stored {len(self.vesting_events)} vesting events for sale lookup")
         return vesting_events
+
+    def process_esop_vesting_events(
+        self,
+        esop_records: List[RSUVestingRecord]
+    ) -> List[VestingEvent]:
+        """Backward-compatible alias for the generalized RSU vesting path."""
+        return self.process_rsu_vesting_events(esop_records)
     
     def get_vesting_details(self, vest_date: Date, grant_number: str) -> Optional[VestingEvent]:
         """Look up vesting details for a specific vest date and grant number."""
@@ -436,31 +480,43 @@ class RSUCalculator:
         
         for record in sale_records:
             try:
-                # Get exchange rate for sale date (SBI TTBR rate)
-                exchange_rate = self.get_exchange_rate(record.date_sold)
-                if not exchange_rate:
-                    logger.error(f"No exchange rate available for sale date {record.date_sold}")
+                # Keep the sale-date rate for bank reconciliation, while Rule
+                # 115 uses the prior month-end rate for tax calculations.
+                sale_exchange_rate = self.get_exchange_rate(record.date_sold)
+                capital_gains_exchange_rate = self.get_capital_gains_exchange_rate(
+                    record.date_sold
+                )
+                if not capital_gains_exchange_rate:
+                    logger.error(
+                        f"No Rule 115 exchange rate available for sale date {record.date_sold}"
+                    )
                     continue
+                if not sale_exchange_rate:
+                    logger.warning(
+                        f"No sale-date exchange rate available for {record.date_sold}; "
+                        "using the Rule 115 rate for bank reconciliation"
+                    )
+                    sale_exchange_rate = capital_gains_exchange_rate
                 
                 # APPLY FORMULAS (see documentation above)
                 # Formula 1: Sale proceeds from broker (most accurate)
                 sale_price_per_share = record.proceeds_per_share or 0
                 sale_proceeds_usd = record.total_proceeds or 0
                 
-                # Formula 2: Convert to INR using sale date exchange rate
-                sale_proceeds_inr = sale_proceeds_usd * exchange_rate
+                # Formula 2: Convert to INR using the Rule 115 exchange rate
+                sale_proceeds_inr = sale_proceeds_usd * capital_gains_exchange_rate
                 
                 # Formula 3: Cost basis from broker (FMV at vesting)
                 cost_basis_usd = record.adjusted_cost_basis or 0
                 
-                # Formula 4: Convert cost basis to INR using sale date rate
-                cost_basis_inr = cost_basis_usd * exchange_rate
+                # Formula 4: Convert cost basis to INR using the Rule 115 rate
+                cost_basis_inr = cost_basis_usd * capital_gains_exchange_rate
                 
                 # Formula 5: Use broker's calculated gain (preferred) or Formula 6 (fallback)
                 capital_gain_usd = record.adjusted_gain_loss or (sale_proceeds_usd - cost_basis_usd)
                 
                 # Formula 7: Convert capital gain to INR
-                capital_gain_inr = capital_gain_usd * exchange_rate
+                capital_gain_inr = capital_gain_usd * capital_gains_exchange_rate
                 
                 # Formula 8: Determine holding period and tax classification
                 acquisition_date = record.date_acquired or record.vest_date
@@ -469,7 +525,18 @@ class RSUCalculator:
                     acquisition_date = record.date_sold  # Fallback
                 
                 holding_days = (record.date_sold - acquisition_date).days
-                gain_type = "Long-term" if holding_days > (24 * 30) else "Short-term"
+                try:
+                    long_term_cutoff = acquisition_date.replace(
+                        year=acquisition_date.year + 2
+                    )
+                except ValueError:
+                    long_term_cutoff = acquisition_date.replace(
+                        year=acquisition_date.year + 2,
+                        day=28,
+                    )
+                gain_type = (
+                    "Long-term" if record.date_sold > long_term_cutoff else "Short-term"
+                )
                 
                 # Get original vesting details from stored RSU data
                 vesting_details = self.get_vesting_details(acquisition_date, record.grant_number or "")
@@ -483,7 +550,10 @@ class RSUCalculator:
                 else:
                     # Fallback calculation if vesting details not found
                     vest_fmv_usd = cost_basis_usd / record.quantity if record.quantity > 0 else 0
-                    vest_exchange_rate = self.get_exchange_rate(acquisition_date) or exchange_rate
+                    vest_exchange_rate = (
+                        self.get_exchange_rate(acquisition_date)
+                        or capital_gains_exchange_rate
+                    )
                     vest_fmv_inr = vest_fmv_usd * vest_exchange_rate
                     logger.warning(f"Vesting details not found for {acquisition_date}_{record.grant_number}, "
                                  f"using fallback calculation")
@@ -504,7 +574,8 @@ class RSUCalculator:
                     capital_gain_usd=capital_gain_usd,
                     capital_gain_inr=capital_gain_inr,
                     gain_type=gain_type,
-                    exchange_rate_sale=exchange_rate,
+                    exchange_rate_sale=sale_exchange_rate,
+                    capital_gains_exchange_rate=capital_gains_exchange_rate,
                     vest_fmv_usd=vest_fmv_usd,
                     vest_exchange_rate=vest_exchange_rate,
                     vest_fmv_inr=vest_fmv_inr,

@@ -379,7 +379,7 @@ class RSUService:
         try:
             # Validate G&L Statements
             gl_records = []
-            for gl_path in self.settings.gl_statements_paths:
+            for gl_path in self.settings.get_gl_statement_files(use_auto_discovery=True):
                 if gl_path.exists():
                     gl_loader = GLStatementLoader(gl_path)
                     gl_file_records = gl_loader.get_validated_records()

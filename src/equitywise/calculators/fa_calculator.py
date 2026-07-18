@@ -92,6 +92,7 @@ class FADeclarationSummary(BaseModel):
     
     # Share Summary for CL year (only vested shares matter for FA)
     total_vested_shares: float = 0.0      # Currently held shares (vested - sold) 
+    total_unvested_shares: float = 0.0    # Granted shares not vested yet
     total_vested_ever: float = 0.0        # All shares vested historically
     total_sold_in_cl: float = 0.0         # Shares sold during CL year
     total_sold_ever: float = 0.0          # All shares sold historically
@@ -99,6 +100,9 @@ class FADeclarationSummary(BaseModel):
     # Vested holdings value (unvested not relevant for FA)
     vested_holdings_usd: float = 0.0
     vested_holdings_inr: float = 0.0
+    unvested_holdings_usd: float = 0.0
+    unvested_holdings_inr: float = 0.0
+    total_equity_value_inr: float = 0.0
     
     # Balance tracking for FA compliance (Key FA reporting requirements)
     opening_balance_inr: float = Field(default=0.0, description="Opening balance from initial vesting date (₹)")
@@ -130,14 +134,14 @@ class FADeclarationSummary(BaseModel):
     @property
     def exceeds_declaration_threshold(self) -> bool:
         """Check if peak balance exceeds declaration threshold."""
-        # Use peak balance as it represents the highest value during the year
-        return self.peak_balance_inr > self.fa_declaration_threshold_inr
+        comparison_value = self.peak_balance_inr or self.total_equity_value_inr
+        return comparison_value > self.fa_declaration_threshold_inr
     
     @property
     def declaration_required(self) -> bool:
         """Determine if FA declaration is required based on peak balance."""
-        # FA declaration required if peak balance (vested only) exceeds ₹2 lakh threshold
-        return self.peak_balance_inr >= self.fa_declaration_threshold_inr
+        comparison_value = self.peak_balance_inr or self.vested_holdings_inr
+        return comparison_value >= self.fa_declaration_threshold_inr
 
 
 class FACalculationResults(BaseModel):
@@ -202,22 +206,6 @@ class FACalculator:
                     logger.debug(f"Using exchange rate from {next_date} for {calendar_year} year-end")
                     return self.sbi_rates[next_date]
             
-            # Fallback: If requested year is before our data range, use earliest available rate
-            if self.sbi_rates:
-                earliest_date = min(self.sbi_rates.keys())
-                latest_date = max(self.sbi_rates.keys())
-                
-                if year_end_date < earliest_date:
-                    earliest_rate = self.sbi_rates[earliest_date]
-                    logger.warning(f"No exchange rate data for {calendar_year}. Using earliest available rate "
-                                 f"from {earliest_date} (₹{earliest_rate:.4f}) as fallback")
-                    return earliest_rate
-                elif year_end_date > latest_date:
-                    latest_rate = self.sbi_rates[latest_date] 
-                    logger.warning(f"No exchange rate data for {calendar_year}. Using latest available rate "
-                                 f"from {latest_date} (₹{latest_rate:.4f}) as fallback")
-                    return latest_rate
-            
             logger.warning(f"No year-end exchange rate found for {calendar_year}")
             return None
             
@@ -242,22 +230,6 @@ class FACalculator:
                 if prev_date in self.stock_data:
                     logger.debug(f"Using stock price from {prev_date} for {calendar_year} year-end")
                     return self.stock_data[prev_date].close_price
-            
-            # Fallback: Use earliest or latest available price if year is outside data range
-            if self.stock_data:
-                earliest_date = min(self.stock_data.keys())
-                latest_date = max(self.stock_data.keys())
-                
-                if year_end_date < earliest_date:
-                    earliest_price = self.stock_data[earliest_date].close_price
-                    logger.warning(f"No stock price data for {calendar_year}. Using earliest available price "
-                                 f"from {earliest_date} (${earliest_price:.2f}) as fallback")
-                    return earliest_price
-                elif year_end_date > latest_date:
-                    latest_price = self.stock_data[latest_date].close_price
-                    logger.warning(f"No stock price data for {calendar_year}. Using latest available price "
-                                 f"from {latest_date} (${latest_price:.2f}) as fallback")
-                    return latest_price
             
             logger.warning(f"No year-end stock price found for {calendar_year}")
             return None
@@ -398,9 +370,14 @@ class FACalculator:
                 # - "Date" column = actual date when event occurred (for vested shares)  
                 # - "Vest Date" column = future vesting date for granted shares
                 # - Event Type = "Shares vested" for actual vesting events
-                total_vested = sum(r.vested_qty or r.qty_or_amount or 0 for r in grant_records 
-                                if r.record_type == "Event" and r.event_type == "Shares vested" 
-                                and r.date and r.date <= as_of_date)
+                total_vested = sum(
+                    r.vested_qty or r.qty_or_amount or 0
+                    for r in grant_records
+                    if r.record_type == "Event"
+                    and r.event_type in {"Shares vested", "RSU Vest"}
+                    and (r.date or r.vest_date)
+                    and (r.date or r.vest_date) <= as_of_date
+                )
                 total_sold = 0  # Will be calculated from G&L data separately
                 
                 # Current vested but not sold shares
@@ -626,6 +603,15 @@ class FACalculator:
         
         logger.info(f"Processed {len(equity_holdings)} RSU equity holdings with accurate cost basis")
         return equity_holdings
+
+    def process_esop_equity_holdings(
+        self,
+        esop_records: List[RSUVestingRecord],
+        gl_records: List[GLStatementRecord],
+        as_of_date: Optional[Date] = None
+    ) -> List[EquityHolding]:
+        """Backward-compatible alias for generalized RSU equity holdings."""
+        return self.process_rsu_equity_holdings(esop_records, gl_records, as_of_date)
     
     def calculate_year_balances(
         self,
@@ -693,9 +679,7 @@ class FACalculator:
         year = int(calendar_year)
         
         # APPLY FORMULA 1 & 2: Define key dates for opening and closing
-        # Opening date is the earliest vesting date for shares held during the year
-        # This provides more accurate FA reporting than using arbitrary Jan 1st
-        opening_date = self.get_earliest_vesting_date_for_year(rsu_records, gl_records, calendar_year)
+        opening_date = Date(year, 1, 1)
         closing_date = Date(year, 12, 31)
         
         # APPLY FORMULA 3: Generate monthly dates for peak balance calculation
@@ -1165,9 +1149,14 @@ class FACalculator:
         # Aggregate vested holdings value (from year-end holdings)
         for holding in year_holdings:
             if holding.holding_type == "Vested":
-                # Don't override total_vested_shares - already calculated correctly above
+                if not (rsu_records and gl_records):
+                    summary.total_vested_shares += holding.quantity
                 summary.vested_holdings_usd += holding.market_value_usd_total
                 summary.vested_holdings_inr += holding.market_value_inr_total
+            elif holding.holding_type == "Unvested":
+                summary.total_unvested_shares += holding.quantity
+                summary.unvested_holdings_usd += holding.market_value_usd_total
+                summary.unvested_holdings_inr += holding.market_value_inr_total
             
             # Update year-end exchange rate if not already set
             if holding.exchange_rate > 0 and summary.year_end_exchange_rate == 0.0:
@@ -1176,6 +1165,10 @@ class FACalculator:
         # Set closing balance from year-end holdings if not calculated from balance analysis
         if summary.closing_balance_inr == 0.0:
             summary.closing_balance_inr = summary.vested_holdings_inr
+
+        summary.total_equity_value_inr = (
+            summary.vested_holdings_inr + summary.unvested_holdings_inr
+        )
         
         logger.info(f"FA Summary for {calendar_year}: "
                    f"₹{summary.vested_holdings_inr:,.2f} vested year-end, "

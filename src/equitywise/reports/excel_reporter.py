@@ -302,7 +302,7 @@ class ExcelReporter:
                 'Grant Number': event.grant_number,
                 'Shares Sold': event.quantity_sold,
                 'Sale Price (USD)': event.sale_price_usd,
-                'Exchange Rate': event.exchange_rate_sale,
+                'Rule 115 Exchange Rate': event.capital_gains_exchange_rate or event.exchange_rate_sale,
                 'Sale Proceeds (USD)': event.sale_proceeds_usd,
                 'Sale Proceeds (INR)': event.sale_proceeds_inr,
                 'Cost Basis (USD)': event.cost_basis_usd,
@@ -311,7 +311,8 @@ class ExcelReporter:
                 'Capital Gain (INR)': event.capital_gain_inr,
                 'Holding Period': f"{event.holding_period_days} days",
                 'Gain Type': event.gain_type,
-                'Financial Year': event.financial_year
+                'Financial Year': event.financial_year,
+                'Sale-Date Exchange Rate': event.exchange_rate_sale
             })
         
         df = pd.DataFrame(sale_data)

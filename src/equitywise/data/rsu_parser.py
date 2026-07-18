@@ -16,8 +16,8 @@ from loguru import logger
 
 class RSUVestingRecord(BaseModel):
     """Model for RSU/ESPP equity data extracted from a statement."""
-    employee_id: str
-    employee_name: str
+    employee_id: Optional[str] = None
+    employee_name: Optional[str] = None
     grant_number: str
     grant_type: str = "RSU"  # RSU or ESPP
     quantity: int
@@ -64,6 +64,35 @@ class RSUVestingRecord(BaseModel):
             cleaned = v.replace('$', '').replace(',', '').replace('₹', '').strip()
             return float(cleaned)
         return float(v)
+
+    @field_validator('quantity', mode='after')
+    @classmethod
+    def validate_positive_quantity(cls, v):
+        """A vesting record must contain at least one vested share."""
+        if v <= 0:
+            raise ValueError("Quantity must be positive")
+        return v
+
+    @field_validator('wh_quantity', mode='after')
+    @classmethod
+    def validate_non_negative_withholding_quantity(cls, v):
+        if v < 0:
+            raise ValueError("Withholding quantity cannot be negative")
+        return v
+
+    @field_validator('fmv_usd', 'total_usd', 'forex_rate', 'total_inr', mode='after')
+    @classmethod
+    def validate_positive_amounts(cls, v):
+        if v <= 0:
+            raise ValueError("Vesting values and exchange rate must be positive")
+        return v
+
+    @field_validator('wh_fmv_usd', 'wh_total_inr', mode='after')
+    @classmethod
+    def validate_non_negative_withholding_amounts(cls, v):
+        if v < 0:
+            raise ValueError("Withholding values cannot be negative")
+        return v
 
     def __str__(self):
         """String representation with key details"""
@@ -292,8 +321,38 @@ class RSUParser:
                 logger.debug(f"Could not extract withholding FMV USD from RSU line")
                 return None
             
-            # Skip forex rate for withholding (usually same as main)
-            base_idx += 1  # Skip withholding forex rate
+            # Skip forex rate for withholding (usually same as main).
+            if base_idx < len(parts):
+                base_idx += 1
+
+            # The statement separates released-share perquisites from shares
+            # withheld for tax. The final Form-16 column is the authoritative
+            # gross taxable amount and must include both portions.
+            wh_total_usd = 0.0
+            if base_idx < len(parts):
+                parsed_wh_total_usd, next_idx = get_usd_value(base_idx)
+                if parsed_wh_total_usd is not None:
+                    wh_total_usd = parsed_wh_total_usd
+                    base_idx = next_idx
+
+            calculated_wh_total_inr = (
+                wh_total_usd * forex_rate if wh_total_usd else 0.0
+            )
+            wh_total_inr = calculated_wh_total_inr
+            if base_idx < len(parts):
+                wh_total_inr = float(
+                    parts[base_idx].replace(',', '').replace('₹', '')
+                )
+                base_idx += 1
+
+            form16_total_inr = total_inr + wh_total_inr
+            if base_idx < len(parts):
+                form16_total_inr = float(
+                    parts[base_idx].replace(',', '').replace('₹', '')
+                )
+
+            gross_quantity = quantity + wh_quantity
+            gross_total_usd = total_usd + wh_total_usd
             
             # Parse date with flexible format handling multiple variations
             vesting_date = None
@@ -320,18 +379,15 @@ class RSUParser:
                 logger.debug(f"Could not parse date '{date_str}' with any known format")
                 return None
             
-            # Calculate withholding total INR based on proportion
-            wh_total_inr = total_inr * (wh_quantity / quantity) if wh_quantity > 0 else 0.0
-            
             return {
                 'grant_number': grant_number,
                 'grant_type': equity_type,
-                'quantity': quantity,
+                'quantity': gross_quantity,
                 'vesting_date': vesting_date,
                 'fmv_usd': fmv_usd,
-                'total_usd': total_usd,
+                'total_usd': gross_total_usd,
                 'forex_rate': forex_rate,
-                'total_inr': total_inr,
+                'total_inr': form16_total_inr,
                 'wh_quantity': wh_quantity,
                 'wh_fmv_usd': wh_fmv_usd,
                 'wh_total_inr': wh_total_inr,

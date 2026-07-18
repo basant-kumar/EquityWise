@@ -4,6 +4,7 @@ from datetime import date, datetime
 
 from openpyxl import Workbook
 
+from equitywise.calculators.rsu_calculator import RSUCalculator
 from equitywise.config.settings import Settings
 from equitywise.data.loaders import RSULoader
 from equitywise.data.rsu_parser import RSUParser
@@ -19,20 +20,17 @@ def _statement_line() -> str:
 def test_excel_statement_is_parsed_into_rsu_records(tmp_path):
     statement_path = tmp_path / "RSU_FY-24-25.xlsx"
     workbook = Workbook()
-
-    cover = workbook.active
-    cover.title = "Employee"
-    cover.append(["Employee Id", 12345, "Employee Name", "Ada Lovelace"])
-
-    details = workbook.create_sheet("Statement")
+    details = workbook.active
+    details.title = "Statement"
     details.append([
         "Type", "Grant", "Grant Price", "Quantity", "", "Vesting Date",
         "FMV USD", "Total USD", "Forex", "Total INR", "WH Quantity",
         "WH FMV USD", "WH Forex", "WH Total USD", "WH Total INR", "Net INR",
     ])
     details.append([
-        "RSU", "RU403833", 0, 2, "NA", datetime(2025, 1, 15),
-        419.49, 838.98, 86.3632, 72457, 0, 419.49, 86.3632, 0, 0, 72457,
+        "RSU", "RU403833", 0, 3, "NA", datetime(2025, 1, 15),
+        304.53, 913.59, 90.2935, 82491, 1, 304.53, 90.2935,
+        304.53, 27497, 109988,
     ])
     workbook.save(statement_path)
 
@@ -40,16 +38,23 @@ def test_excel_statement_is_parsed_into_rsu_records(tmp_path):
 
     assert len(records) == 1
     record = records[0]
-    assert record.employee_id == "12345"
-    assert record.employee_name == "Ada Lovelace"
+    assert record.employee_id is None
+    assert record.employee_name is None
     assert record.grant_number == "RU403833"
     assert record.grant_type == "RSU"
-    assert record.quantity == 2
+    assert record.quantity == 4
     assert record.vesting_date == date(2025, 1, 15)
-    assert record.fmv_usd == 419.49
-    assert record.total_usd == 838.98
-    assert record.forex_rate == 86.3632
-    assert record.total_inr == 72457
+    assert record.fmv_usd == 304.53
+    assert record.total_usd == 1218.12
+    assert record.forex_rate == 90.2935
+    assert record.total_inr == 109988
+    assert record.wh_quantity == 1
+    assert record.wh_total_inr == 27497
+
+    event = RSUCalculator([], []).process_rsu_vesting_events(records)[0]
+    assert event.vested_quantity == 4
+    assert event.taxable_gain_usd == 1218.12
+    assert event.taxable_gain_inr == 109988
 
     loaded = RSULoader(statement_path).load_data()
     assert loaded.loc[0, "grant_number"] == "RU403833"
@@ -105,4 +110,19 @@ def test_rsu_discovery_accepts_pdf_and_excel_statements(tmp_path):
     assert [path.name for path in settings.get_rsu_files()] == expected_statements
     assert [path.name for path in settings.discover_rsu_pdf_files()] == [
         "RSU_FY-22-23.pdf"
+    ]
+
+
+def test_bank_statement_getter_uses_auto_discovery(tmp_path):
+    bank_dir = tmp_path / "bank_statements"
+    bank_dir.mkdir()
+    (bank_dir / "AxisBankStatement.xls").touch()
+    (bank_dir / "ICICIBankStatement.xlsx").touch()
+    (bank_dir / "~$temporary.xlsx").touch()
+
+    settings = Settings(bank_statements_dir=bank_dir)
+
+    assert [path.name for path in settings.get_bank_statement_files()] == [
+        "AxisBankStatement.xls",
+        "ICICIBankStatement.xlsx",
     ]

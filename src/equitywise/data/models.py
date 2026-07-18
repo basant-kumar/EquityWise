@@ -52,6 +52,10 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 # Import RSU models from our parser
 from equitywise.data.rsu_parser import RSUVestingRecord
 
+# Backward-compatible name retained for integrations that used the original
+# ESOP terminology before the parser was generalized to RSU/ESPP statements.
+ESOPVestingRecord = RSUVestingRecord
+
 
 class BenefitHistoryRecord(BaseModel):
     """Complete model for BenefitHistory.xlsx records with all 43 columns."""
@@ -423,13 +427,12 @@ class BankStatementRecord(BaseModel):
     def parse_date(cls, v):
         """Parse date in DD/MM/YYYY format."""
         if isinstance(v, str):
-            try:
-                return datetime.strptime(v, "%d/%m/%Y").date()
-            except ValueError:
+            for date_format in ["%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"]:
                 try:
-                    return datetime.strptime(v, "%Y-%m-%d").date()
+                    return datetime.strptime(v.strip(), date_format).date()
                 except ValueError:
-                    return None
+                    continue
+            return None
         elif isinstance(v, datetime):
             return v.date()
         return v

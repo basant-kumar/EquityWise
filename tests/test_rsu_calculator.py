@@ -29,6 +29,12 @@ def sample_sbi_rates() -> List[SBIRateRecord]:
             'Rate': 83.50
         }),
         SBIRateRecord(**{
+            'Date': date(2024, 9, 30),
+            'Time': '1:00:00 PM',
+            'Currency Pairs': 'INR / 1 USD',
+            'Rate': 83.90
+        }),
+        SBIRateRecord(**{
             'Date': date(2024, 10, 15),
             'Time': '1:00:00 PM',
             'Currency Pairs': 'INR / 1 USD', 
@@ -79,7 +85,7 @@ class TestRSUCalculator:
 
     def test_initialization(self, rsu_calculator):
         """Test calculator initialization."""
-        assert len(rsu_calculator.sbi_rates) == 3
+        assert len(rsu_calculator.sbi_rates) == 4
         assert len(rsu_calculator.stock_data) == 3
 
     def test_get_exchange_rate(self, rsu_calculator):
@@ -101,6 +107,11 @@ class TestRSUCalculator:
         # No exact match
         price = rsu_calculator.get_stock_price(date(2024, 7, 1))
         assert price is None
+
+    def test_get_capital_gains_exchange_rate(self, rsu_calculator):
+        """Capital gains use the prior month-end Rule 115 rate."""
+        rate = rsu_calculator.get_capital_gains_exchange_rate(date(2024, 10, 15))
+        assert rate == 83.90
 
     def test_financial_year_calculation(self, rsu_calculator):
         """Test Indian financial year calculation."""
@@ -177,7 +188,8 @@ class TestRSUCalculator:
         assert event.cost_basis_usd == 26250.0
         assert event.capital_gain_usd == 1250.0  # $27,500 - $26,250
         assert event.exchange_rate_sale == 84.00
-        assert event.capital_gain_inr == 1250.0 * 84.00
+        assert event.capital_gains_exchange_rate == 83.90
+        assert event.capital_gain_inr == 1250.0 * 83.90
         assert event.gain_type == "Short-term"  # 4 months holding period
         assert event.financial_year == "FY24-25"
 
