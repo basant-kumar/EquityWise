@@ -1,6 +1,7 @@
-"""
-RSU PDF Parser for RSU vesting data extraction.
-Extracts vesting events with FMV and exchange rates directly from RSU statements.
+"""RSU statement parser for PDF and Excel vesting statements.
+
+Extracts vesting events with FMV and exchange rates directly from RSU/ESPP
+statements downloaded from Excelity.
 """
 
 import pdfplumber
@@ -14,7 +15,7 @@ from loguru import logger
 
 
 class RSUVestingRecord(BaseModel):
-    """Model for RSU/ESPP equity data extracted from PDF"""
+    """Model for RSU/ESPP equity data extracted from a statement."""
     employee_id: str
     employee_name: str
     grant_number: str
@@ -107,19 +108,24 @@ class RSUVestingRecord(BaseModel):
 
 
 class RSUParser:
-    """Parser for RSU PDF files containing RSU vesting data"""
+    """Parser for RSU PDF or Excel files containing equity vesting data."""
+
+    EXCEL_EXTENSIONS = {'.xlsx', '.xls', '.xlsm'}
+    SUPPORTED_EXTENSIONS = {'.pdf', *EXCEL_EXTENSIONS}
     
-    def __init__(self, pdf_path: str):
-        self.pdf_path = Path(pdf_path)
+    def __init__(self, file_path: str):
+        self.file_path = Path(file_path)
+        # Kept for compatibility with callers that accessed this attribute.
+        self.pdf_path = self.file_path
         self.employee_info: Dict[str, str] = {}
         
     def _extract_employee_info(self, text: str) -> Dict[str, str]:
-        """Extract employee information from PDF text"""
+        """Extract employee information from normalized statement text."""
         info = {}
         
         # Extract employee ID and name from the first line
-        employee_line_pattern = r'Employee Id\s+(\d+)\s+Employee Name\s+(.+)'
-        match = re.search(employee_line_pattern, text)
+        employee_line_pattern = r'Employee\s+Id\s*:?\s*(\S+)\s+Employee\s+Name\s*:?\s*(.+)'
+        match = re.search(employee_line_pattern, text, flags=re.IGNORECASE)
         if match:
             info['employee_id'] = match.group(1)
             info['employee_name'] = match.group(2).strip()
@@ -127,7 +133,7 @@ class RSUParser:
         return info
     
     def _parse_equity_line(self, line: str) -> Optional[Dict[str, Any]]:
-        """Parse a single RSU or ESPP line from the PDF text using flexible field detection"""
+        """Parse a normalized RSU or ESPP row using flexible field detection."""
         try:
             # Handle variable RSU and ESPP line formats with smart field detection
             # RSU Format variations:
@@ -148,9 +154,6 @@ class RSUParser:
                 return None
                 
             parts = line.split()
-            if len(parts) < 15:  # Need at least 15 parts for a complete equity record
-                logger.debug(f"Insufficient parts in {equity_type} line: {len(parts)} parts")
-                return None
             
             # Extract basic fields (different for RSU vs ESPP)
             if equity_type == "RSU":
@@ -179,13 +182,23 @@ class RSUParser:
             date_str = None
             date_index = None
             
-            # Search for date pattern in positions 5-7 (common variations)
-            for i in range(5, min(8, len(parts))):
+            # Search all data fields. Excel exports do not always include the
+            # spacer/NA columns present in PDF text extraction.
+            for i in range(2, len(parts)):
                 candidate = parts[i]
-                # Check if this looks like a date (contains digits and dashes/slashes)
-                if re.match(r'\d{1,2}[-/]\w{2,3}[-/]\d{2,4}', candidate):
-                    date_str = candidate
-                    date_index = i
+                for date_format in [
+                    '%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%d-%b-%y',
+                    '%d-%B-%y', '%d/%b/%Y', '%d-%m-%y', '%m-%d-%Y',
+                    '%Y-%m-%d'
+                ]:
+                    try:
+                        datetime.strptime(candidate, date_format)
+                        date_str = candidate
+                        date_index = i
+                        break
+                    except ValueError:
+                        continue
+                if date_str:
                     break
                     
             if not date_str or date_index is None:
@@ -203,7 +216,7 @@ class RSUParser:
                     
                 try:
                     # Try to parse as float first, then convert to int
-                    float_val = float(candidate.replace(',', '').replace('$', ''))
+                    float_val = float(candidate.replace(',', '').replace('$', '').replace('₹', ''))
                     if float_val > 0:  # Skip zero values
                         quantity = int(float_val)
                         break
@@ -230,15 +243,15 @@ class RSUParser:
                     idx += 1
                     if idx >= len(parts):
                         return None, idx
-                    value = float(parts[idx].replace(',', ''))
+                    value = float(parts[idx].replace(',', '').replace('₹', ''))
                     return value, idx + 1
                 elif part.startswith('$'):
                     # Format 2: $ attached to number
-                    value = float(part[1:].replace(',', ''))
+                    value = float(part[1:].replace(',', '').replace('₹', ''))
                     return value, idx + 1
                 else:
                     # No $ prefix, treat as direct number
-                    value = float(part.replace(',', ''))
+                    value = float(part.replace(',', '').replace('₹', ''))
                     return value, idx + 1
             
             # Get FMV USD value
@@ -257,20 +270,20 @@ class RSUParser:
             if base_idx >= len(parts):
                 logger.debug(f"Missing forex rate in RSU line")
                 return None
-            forex_rate = float(parts[base_idx])
+            forex_rate = float(parts[base_idx].replace(',', '').replace('₹', ''))
             base_idx += 1
             
             if base_idx >= len(parts):
                 logger.debug(f"Missing total INR in RSU line")
                 return None
-            total_inr = float(parts[base_idx].replace(',', ''))
+            total_inr = float(parts[base_idx].replace(',', '').replace('₹', ''))
             base_idx += 1
             
             # Get withholding quantity
             if base_idx >= len(parts):
                 logger.debug(f"Missing withholding quantity in RSU line")
                 return None
-            wh_quantity = int(float(parts[base_idx]))
+            wh_quantity = int(float(parts[base_idx].replace(',', '')))
             base_idx += 1
             
             # Get withholding FMV USD
@@ -329,55 +342,105 @@ class RSUParser:
             logger.warning(f"Could not parse {equity_type if 'equity_type' in locals() else 'equity'} line: {line[:100]}... Error: {e}")
             return None
     
-    def extract_vesting_data(self) -> List[RSUVestingRecord]:
-        """Extract all RSU and ESPP equity records from the PDF"""
-        logger.info(f"Parsing RSU/ESPP PDF: {self.pdf_path}")
-        
-        if not self.pdf_path.exists():
-            raise FileNotFoundError(f"RSU PDF not found: {self.pdf_path}")
-        
+    def _create_records_from_lines(self, lines: List[str], source_type: str) -> List[RSUVestingRecord]:
+        """Create validated records from statement rows normalized as text."""
         records = []
-        all_text = ""  # Collect all text for validation
-        
-        with pdfplumber.open(self.pdf_path) as pdf:
+        all_text = '\n'.join(lines)
+
+        if not self.employee_info:
+            self.employee_info = self._extract_employee_info(all_text)
+
+        for line in lines:
+            stripped_line = line.strip()
+            if not (stripped_line.startswith('RSU ') or stripped_line.startswith('ESPP ')):
+                continue
+
+            parsed_data = self._parse_equity_line(stripped_line)
+            if not parsed_data:
+                continue
+
+            parsed_data.update(self.employee_info)
+            try:
+                record = RSUVestingRecord(**parsed_data)
+                records.append(record)
+                logger.debug(
+                    f"Parsed {record.grant_type}: {record.grant_number} - "
+                    f"{record.quantity} shares on {record.vesting_date}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to create equity record: {e}")
+
+        logger.info(f"Successfully parsed {len(records)} equity records from {source_type}")
+        self._validate_parsing_completeness(all_text, len(records), source_type)
+        return records
+
+    def _extract_pdf_vesting_data(self) -> List[RSUVestingRecord]:
+        """Extract all RSU and ESPP records from a PDF statement."""
+        lines = []
+        with pdfplumber.open(self.file_path) as pdf:
             for page in pdf.pages:
                 text = page.extract_text()
-                if not text:
-                    continue
-                
-                all_text += text + "\n"  # Accumulate text for validation
-                    
-                # Extract employee info from first page
-                if not self.employee_info:
-                    self.employee_info = self._extract_employee_info(text)
-                
-                # Process each line looking for RSU and ESPP records
-                for line in text.split('\n'):
-                    if ('RSU' in line or 'ESPP' in line) and '$' in line:
-                        parsed_data = self._parse_equity_line(line)
-                        if parsed_data:
-                            # Add employee info
-                            parsed_data.update(self.employee_info)
-                            
-                            try:
-                                record = RSUVestingRecord(**parsed_data)
-                                records.append(record)
-                                equity_type = parsed_data.get('grant_type', 'equity')
-                                logger.debug(f"Parsed {equity_type}: {record.grant_number} - {record.quantity} shares on {record.vesting_date}")
-                            except Exception as e:
-                                logger.error(f"Failed to create equity record: {e}")
-                                continue
-        
-        logger.info(f"Successfully parsed {len(records)} equity records from PDF")
-        
-        # Validation: Check if we missed any entries
-        self._validate_parsing_completeness(all_text, len(records))
-        
-        return records
+                if text:
+                    lines.extend(text.splitlines())
+        return self._create_records_from_lines(lines, 'PDF')
+
+    @staticmethod
+    def _format_excel_cell(value: Any) -> str:
+        """Normalize an Excel cell into the token format used by the PDF parser."""
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ''
+        if isinstance(value, (pd.Timestamp, datetime, Date)):
+            return value.strftime('%d-%m-%Y')
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return re.sub(r'\s+', ' ', str(value)).strip()
+
+    def _extract_excel_vesting_data(self) -> List[RSUVestingRecord]:
+        """Extract records from every worksheet in an Excel statement."""
+        lines = []
+        with pd.ExcelFile(self.file_path) as workbook:
+            for sheet_name in workbook.sheet_names:
+                sheet = pd.read_excel(
+                    workbook,
+                    sheet_name=sheet_name,
+                    header=None,
+                    dtype=object,
+                    keep_default_na=False,
+                )
+                for row in sheet.itertuples(index=False, name=None):
+                    cells = [self._format_excel_cell(value) for value in row]
+                    line = ' '.join(cell for cell in cells if cell)
+                    if line:
+                        lines.append(line)
+        return self._create_records_from_lines(lines, 'Excel')
+
+    def extract_vesting_data(self) -> List[RSUVestingRecord]:
+        """Extract all RSU and ESPP records from a PDF or Excel statement."""
+        logger.info(f"Parsing RSU/ESPP statement: {self.file_path}")
+
+        if not self.file_path.exists():
+            raise FileNotFoundError(f"RSU statement not found: {self.file_path}")
+
+        extension = self.file_path.suffix.lower()
+        if extension == '.pdf':
+            return self._extract_pdf_vesting_data()
+        if extension in self.EXCEL_EXTENSIONS:
+            return self._extract_excel_vesting_data()
+
+        supported = ', '.join(sorted(self.SUPPORTED_EXTENSIONS))
+        raise ValueError(
+            f"Unsupported RSU statement format '{self.file_path.suffix}'. "
+            f"Supported formats: {supported}"
+        )
     
-    def _validate_parsing_completeness(self, pdf_text: str, parsed_count: int) -> None:
+    def _validate_parsing_completeness(
+        self,
+        statement_text: str,
+        parsed_count: int,
+        source_type: str = 'statement',
+    ) -> None:
         """Validate that we haven't missed any RSU/ESPP entries during parsing"""
-        lines = pdf_text.split('\n')
+        lines = statement_text.split('\n')
         expected_equity_lines = []
         
         for line_num, line in enumerate(lines, 1):
@@ -389,14 +452,14 @@ class RSUParser:
         
         if parsed_count != expected_count:
             logger.warning(f"⚠️  PARSING MISMATCH: Expected {expected_count} entries, but parsed {parsed_count}")
-            logger.warning(f"📊 Expected equity lines found in PDF:")
+            logger.warning(f"📊 Expected equity lines found in {source_type}:")
             for line_num, line_preview in expected_equity_lines:
                 logger.warning(f"   Line {line_num}: {line_preview}")
             
             missing_count = expected_count - parsed_count
             if missing_count > 0:
                 logger.error(f"❌ {missing_count} entries were NOT parsed successfully!")
-                logger.error(f"💡 This indicates parsing logic needs improvement for this PDF format")
+                logger.error(f"💡 This indicates parsing logic needs improvement for this {source_type} format")
         else:
             logger.info(f"✅ Parsing validation passed: {parsed_count}/{expected_count} entries parsed successfully")
     
@@ -430,7 +493,17 @@ class RSUParser:
         logger.info(f"RSU vesting data saved to: {output_path}")
 
 
+def parse_rsu_statement(file_path: str) -> List[RSUVestingRecord]:
+    """Convenience function to parse a PDF or Excel RSU statement."""
+    parser = RSUParser(file_path)
+    return parser.extract_vesting_data()
+
+
+def parse_rsu_excel(excel_path: str) -> List[RSUVestingRecord]:
+    """Convenience function to parse an Excel RSU statement."""
+    return parse_rsu_statement(excel_path)
+
+
 def parse_rsu_pdf(pdf_path: str) -> List[RSUVestingRecord]:
     """Convenience function to parse RSU PDF and return vesting records"""
-    parser = RSUParser(pdf_path)
-    return parser.extract_vesting_data()
+    return parse_rsu_statement(pdf_path)

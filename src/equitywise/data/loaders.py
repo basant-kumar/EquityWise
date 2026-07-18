@@ -562,13 +562,13 @@ class DataValidator:
 
 
 class RSULoader(DataLoader):
-    """Loader for RSU PDF vesting data."""
+    """Loader for RSU PDF or Excel vesting data."""
     
-    def _load_file(self, file_path: Path) -> pd.DataFrame:
-        """Load RSU PDF file and extract vesting data."""
-        parser = RSUParser(str(file_path))
+    def _load_file(self) -> pd.DataFrame:
+        """Load an RSU statement and extract vesting data."""
+        parser = RSUParser(str(self.file_path))
         df = parser.to_dataframe()
-        logger.info(f"RSU PDF file has {len(df)} vesting records")
+        logger.info(f"RSU statement has {len(df)} vesting records")
         return df
     
     def _clean_data(self, df: pd.DataFrame) -> pd.DataFrame:

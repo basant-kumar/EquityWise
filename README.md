@@ -208,8 +208,8 @@ data/
 #### 📄 **RSU & ESPP Vesting Statements** → `data/user_data/rsu_documents/`
 - Login to **Excelity Portal (Adobe Benefits)**
 - Navigate: **Payroll & Benefits → My Reports → Stock Perquisites Statement**
-- **Select Financial Year → Download as PDF**
-- Save as: `data/user_data/rsu_documents/RSU_FY-XX-XX.pdf`
+- **Select Financial Year → Download as PDF or Excel**
+- Save as: `data/user_data/rsu_documents/RSU_FY-XX-XX.pdf` or `RSU_FY-XX-XX.xlsx`
 - **Note**: Files may contain both RSU and ESPP entries - both are automatically parsed
 
 #### 🏦 **Bank Statements** → `data/user_data/bank_statements/` (Optional)

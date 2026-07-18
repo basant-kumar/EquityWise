@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     
     rsu_documents_dir: Path = Field(
         default=Path("data/user_data/rsu_documents"),
-        description="Directory containing RSU vesting statement PDFs from Excelity"
+        description="Directory containing RSU vesting statement PDFs or Excel files from Excelity"
     )
     
     bank_statements_dir: Path = Field(
@@ -239,27 +239,38 @@ class Settings(BaseSettings):
     # ===================================================================================
     
     def discover_rsu_pdf_files(self) -> List[Path]:
-        """Automatically discover all RSU PDF files in rsu_documents directory.
-        
-        Returns:
-            List of Path objects for all PDF files found, sorted by name
+        """Discover RSU PDFs only (legacy compatibility helper)."""
+        return [path for path in self.discover_rsu_statement_files() if path.suffix.lower() == '.pdf']
+
+    def discover_rsu_statement_files(self) -> List[Path]:
+        """Discover all supported RSU statements in ``rsu_documents_dir``.
+
+        PDF, XLSX, XLS, and XLSM exports are accepted and returned in a stable
+        filename order. Excel temporary files are ignored.
         """
         if not self.rsu_documents_dir.exists():
             logger.warning(f"RSU documents directory not found: {self.rsu_documents_dir}")
             return []
-        
-        pdf_files = []
-        for pattern in ["*.pdf", "*.PDF"]:
-            pdf_files.extend(self.rsu_documents_dir.glob(pattern))
-        
+
+        supported_extensions = {'.pdf', '.xlsx', '.xls', '.xlsm'}
+        statement_files = [
+            path for path in self.rsu_documents_dir.iterdir()
+            if path.is_file()
+            and path.suffix.lower() in supported_extensions
+            and not path.name.startswith('~$')
+        ]
+
         # Sort by filename for consistent processing order
-        pdf_files.sort(key=lambda x: x.name)
-        
-        logger.info(f"Discovered {len(pdf_files)} RSU PDF files in {self.rsu_documents_dir}")
-        for file in pdf_files:
-            logger.debug(f"Found RSU PDF: {file.name}")
-        
-        return pdf_files
+        statement_files.sort(key=lambda path: path.name.lower())
+
+        logger.info(
+            f"Discovered {len(statement_files)} RSU PDF/Excel files in "
+            f"{self.rsu_documents_dir}"
+        )
+        for file in statement_files:
+            logger.debug(f"Found RSU statement: {file.name}")
+
+        return statement_files
     
     def discover_gl_statement_files(self) -> List[Path]:
         """Automatically discover all G&L statement files in gl_statements directory.
@@ -392,10 +403,10 @@ class Settings(BaseSettings):
             use_auto_discovery: If True, use auto-discovery; if False, use configured paths
             
         Returns:
-            List of RSU PDF file paths
+            List of RSU PDF or Excel statement paths
         """
         if use_auto_discovery:
-            discovered = self.discover_rsu_pdf_files()
+            discovered = self.discover_rsu_statement_files()
             if discovered:
                 return discovered
             else:

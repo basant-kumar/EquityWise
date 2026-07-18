@@ -15,7 +15,7 @@ Key Model Categories:
 2. **Financial Reference Data**:
    - SBIRateRecord: SBI TTBR USD-INR exchange rates with date parsing
    - AdobeStockRecord: Historical stock prices with validation
-       - RSUVestingRecord: RSU vesting data from PDF parsing
+       - RSUVestingRecord: RSU vesting data from PDF/Excel statement parsing
 
 3. **Banking & Reconciliation**:
    - BankStatementRecord: Bank transfer data with broker detection

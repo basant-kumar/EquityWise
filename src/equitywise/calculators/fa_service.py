@@ -58,9 +58,9 @@ class FAService:
             # Load RSU vesting data using AUTO-DISCOVERY from RSU documents directory
             all_rsu_records = []
             
-            # Use auto-discovery to find all RSU PDF files in the directory
+            # Use auto-discovery to find all RSU PDF/Excel files in the directory
             rsu_files = self.settings.get_rsu_files(use_auto_discovery=True)
-            logger.info(f"Auto-discovered {len(rsu_files)} RSU PDF files for Foreign Assets analysis")
+            logger.info(f"Auto-discovered {len(rsu_files)} RSU statement files for Foreign Assets analysis")
             
             for rsu_path in rsu_files:
                 try:
@@ -73,7 +73,7 @@ class FAService:
             
             rsu_records = all_rsu_records
             progress.update(task1, advance=1)
-            logger.info(f"📊 Total RSU vesting records loaded from {len(rsu_files)} PDF files: {len(rsu_records)}")
+            logger.info(f"📊 Total RSU vesting records loaded from {len(rsu_files)} statement files: {len(rsu_records)}")
             
             # Load G&L Statements using AUTO-DISCOVERY from G&L statements directory
             gl_records = []

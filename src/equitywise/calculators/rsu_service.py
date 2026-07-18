@@ -85,9 +85,9 @@ class RSUService:
             # Load RSU vesting data using AUTO-DISCOVERY from RSU documents directory
             all_rsu_records = []
             
-            # Use auto-discovery to find all RSU PDF files in the directory
+            # Use auto-discovery to find all RSU PDF/Excel files in the directory
             rsu_files = self.settings.get_rsu_files(use_auto_discovery=True)
-            logger.info(f"Auto-discovered {len(rsu_files)} RSU PDF files for processing")
+            logger.info(f"Auto-discovered {len(rsu_files)} RSU statement files for processing")
             
             for rsu_path in rsu_files:
                 try:
@@ -100,7 +100,7 @@ class RSUService:
             
             rsu_records = all_rsu_records
             progress.update(task1, advance=1)
-            logger.info(f"📊 Total RSU vesting records loaded from {len(rsu_files)} PDF files: {len(rsu_records)}")
+            logger.info(f"📊 Total RSU vesting records loaded from {len(rsu_files)} statement files: {len(rsu_records)}")
             
             # Load G&L Statements using AUTO-DISCOVERY from G&L statements directory
             gl_records = []
@@ -349,10 +349,11 @@ class RSUService:
             'summary': {}
         }
         
-        # Validate RSU vesting data from ALL RSU PDFs
+        # Validate RSU vesting data from all discovered PDF/Excel statements
         all_rsu_records = []
-        
-        for rsu_path in self.settings.rsu_pdf_paths:
+
+        rsu_files = self.settings.get_rsu_files(use_auto_discovery=True)
+        for rsu_path in rsu_files:
             try:
                 if rsu_path.exists():
                     rsu_loader = RSULoader(rsu_path)
@@ -360,7 +361,7 @@ class RSUService:
                     all_rsu_records.extend(rsu_file_records)
                     logger.info(f"✓ RSU data validation successful for {rsu_path.name}: {len(rsu_file_records)} records")
                 else:
-                    logger.warning(f"RSU PDF not found for validation: {rsu_path}")
+                    logger.warning(f"RSU statement not found for validation: {rsu_path}")
                     
             except Exception as e:
                 validation_results['success'] = False
@@ -370,7 +371,10 @@ class RSUService:
         # Store combined RSU records
         validation_results['data']['rsu_vesting'] = all_rsu_records
         validation_results['summary']['rsu_vesting'] = len(all_rsu_records)
-        logger.info(f"✓ Total RSU vesting data validation from {len(self.settings.rsu_pdf_paths)} PDFs: {len(all_rsu_records)} records")
+        logger.info(
+            f"✓ Total RSU vesting data validation from {len(rsu_files)} statements: "
+            f"{len(all_rsu_records)} records"
+        )
         
         try:
             # Validate G&L Statements
