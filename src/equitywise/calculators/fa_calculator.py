@@ -25,7 +25,9 @@ class VestWiseDetails(BaseModel):
     # Basic vesting information
     vest_date: Date = Field(description="Date of acquiring the interest (vesting date)")
     grant_number: str = Field(description="Grant number for tracking")
-    initial_shares: float = Field(description="Number of shares initially vested")
+    initial_shares: float = Field(description="Number of shares released to the employee")
+    gross_vested_shares: float = Field(default=0.0, description="Gross shares vested before withholding")
+    withheld_shares: float = Field(default=0.0, description="Shares withheld for payroll tax")
     
     # Initial value at vesting
     initial_value_usd: float = Field(description="Initial value in USD at vesting")
@@ -319,6 +321,76 @@ class FACalculator:
     def calculate_calendar_year(self, target_date: Date) -> str:
         """Calculate calendar year for a given date."""
         return str(target_date.year)
+
+    @staticmethod
+    def _released_shares(record: RSUVestingRecord) -> float:
+        """Return shares actually delivered after sell-to-cover withholding."""
+        return max(0.0, float(record.quantity) - float(record.wh_quantity or 0))
+
+    def _calculate_rsu_lot_balances(
+        self,
+        rsu_records: List[RSUVestingRecord],
+        gl_records: List[GLStatementRecord],
+        as_of_date: Date,
+    ) -> List[Tuple[RSUVestingRecord, float, float, float]]:
+        """Calculate released, sold, and held shares for each vest lot.
+
+        G&L rows identify the originating vest through both grant number and
+        acquisition date. Matching on grant alone can apply an older lot's sale
+        to a newer FY statement, while starting from gross vested shares counts
+        payroll-tax withholding as an owned foreign asset.
+        """
+        sold_by_vest: Dict[Tuple[str, Date], float] = defaultdict(float)
+        for sale in gl_records:
+            if (
+                sale.date_sold
+                and sale.date_sold <= as_of_date
+                and sale.date_acquired
+                and sale.grant_number
+            ):
+                sold_by_vest[(sale.grant_number, sale.date_acquired)] += float(
+                    sale.quantity or 0
+                )
+
+        balances = []
+        for vest in rsu_records:
+            if vest.vesting_date > as_of_date:
+                continue
+            released = self._released_shares(vest)
+            sold = sold_by_vest.get((vest.grant_number, vest.vesting_date), 0.0)
+            held = max(0.0, released - sold)
+            balances.append((vest, released, sold, held))
+
+        return balances
+
+    @staticmethod
+    def _benefit_holdings_by_grant(
+        benefit_records: List[BenefitHistoryRecord],
+        as_of_date: Date,
+    ) -> Dict[str, float]:
+        """Return authoritative net holdings from BenefitHistory events."""
+        released_by_grant: Dict[str, float] = defaultdict(float)
+        sold_by_grant: Dict[str, float] = defaultdict(float)
+
+        for record in benefit_records:
+            if (
+                record.record_type != "Event"
+                or not record.grant_number
+                or not record.date
+                or record.date > as_of_date
+                or not record.qty_or_amount
+            ):
+                continue
+
+            if record.event_type == "Shares released":
+                released_by_grant[record.grant_number] += float(record.qty_or_amount)
+            elif record.event_type == "Shares sold":
+                sold_by_grant[record.grant_number] += float(record.qty_or_amount)
+
+        return {
+            grant: max(0.0, released_by_grant.get(grant, 0.0) - sold_by_grant.get(grant, 0.0))
+            for grant in set(released_by_grant) | set(sold_by_grant)
+        }
     
     def process_equity_holdings(
         self, 
@@ -446,7 +518,8 @@ class FACalculator:
         self,
         rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
-        as_of_date: Optional[Date] = None
+        as_of_date: Optional[Date] = None,
+        benefit_records: Optional[List[BenefitHistoryRecord]] = None,
     ) -> List[EquityHolding]:
         """Process equity holdings using RSU PDF vesting data for accurate cost basis calculation."""
         
@@ -521,57 +594,66 @@ class FACalculator:
             logger.error(f"No year-end stock price available for {calendar_year} (even with fallbacks)")
             return []
         
-        # Filter vesting records that occurred before or on the as_of_date
-        relevant_vestings = [r for r in rsu_records if r.vesting_date <= as_of_date]
-        logger.info(f"Found {len(relevant_vestings)} vesting events before {as_of_date}")
-        
-        # APPLY FORMULA 3: Calculate total sold shares by grant
-        sold_shares_by_grant = defaultdict(float)
-        for gl_record in gl_records:
-            if gl_record.date_sold <= as_of_date and gl_record.grant_number:
-                sold_shares_by_grant[gl_record.grant_number] += gl_record.quantity or 0
-        
-        logger.info(f"Calculated sold shares for {len(sold_shares_by_grant)} grants from G&L data")
-        
-        # Group vesting records by grant for analysis (Formula 2 preparation)
-        grants_vestings = defaultdict(list)
-        for record in relevant_vestings:
-            grants_vestings[record.grant_number].append(record)
+        lot_balances = self._calculate_rsu_lot_balances(
+            rsu_records, gl_records, as_of_date
+        )
+        logger.info(f"Found {len(lot_balances)} vesting events before {as_of_date}")
+
+        # BenefitHistory contains the complete release/sale history, whereas an
+        # RSU statement may cover only one FY. Use it as the authoritative
+        # quantity source when present; RSU/G&L lots still provide cost basis.
+        benefit_holdings = (
+            self._benefit_holdings_by_grant(benefit_records, as_of_date)
+            if benefit_records
+            else {}
+        )
+
+        grants_lots = defaultdict(list)
+        for balance in lot_balances:
+            grants_lots[balance[0].grant_number].append(balance)
+
+        all_grants = set(grants_lots)
+        if benefit_records:
+            all_grants.update(
+                grant for grant, quantity in benefit_holdings.items() if quantity > 0
+            )
         
         equity_holdings = []
         
-        for grant_number, vesting_records in grants_vestings.items():
+        for grant_number in sorted(all_grants):
             try:
-                # APPLY FORMULA 2: Calculate total vested shares for this grant
-                total_vested_shares = sum(r.quantity for r in vesting_records)
-                total_sold_shares = sold_shares_by_grant.get(grant_number, 0.0)
-                
-                # APPLY FORMULA 1: Current holding calculation
-                current_holding = max(0.0, total_vested_shares - total_sold_shares)
+                grant_lots = grants_lots.get(grant_number, [])
+                calculated_holding = sum(balance[3] for balance in grant_lots)
+                current_holding = (
+                    benefit_holdings.get(grant_number, 0.0)
+                    if benefit_records
+                    else calculated_holding
+                )
                 
                 if current_holding > 0:
-                    # APPLY FORMULA 4: FIFO cost basis calculation
+                    # FIFO sales leave the newest available lots in the account.
+                    # Exact acquisition-date G&L matching has already calculated
+                    # each lot's residual quantity above.
+                    shares_needing_basis = current_holding
                     total_cost_basis_usd = 0.0
-                    remaining_shares = current_holding
-                    
-                    # Sort vesting records by date for FIFO (earliest first)
-                    sorted_vestings = sorted(vesting_records, key=lambda x: x.vesting_date)
-                    
-                    for vesting_record in sorted_vestings:
-                        if remaining_shares <= 0:
+                    for vest, _released, _sold, held in sorted(
+                        grant_lots, key=lambda item: item[0].vesting_date, reverse=True
+                    ):
+                        if shares_needing_basis <= 0:
                             break
-                        
-                        # Allocate shares from this vesting to remaining holding
-                        shares_to_use = min(remaining_shares, vesting_record.quantity)
-                        cost_contribution = shares_to_use * vesting_record.fmv_usd
-                        total_cost_basis_usd += cost_contribution
-                        remaining_shares -= shares_to_use
+                        shares_to_use = min(shares_needing_basis, held)
+                        total_cost_basis_usd += shares_to_use * vest.fmv_usd
+                        shares_needing_basis -= shares_to_use
                     
                     # APPLY FORMULA 5: Calculate weighted average cost basis per share
                     avg_cost_basis_per_share = total_cost_basis_usd / current_holding if current_holding > 0 else 0.0
                     
-                    # Find the latest vesting record for additional metadata
-                    latest_vesting = max(vesting_records, key=lambda x: x.vesting_date)
+                    # Find the latest loaded vesting record for additional metadata.
+                    latest_vesting = (
+                        max((lot[0] for lot in grant_lots), key=lambda x: x.vesting_date)
+                        if grant_lots
+                        else None
+                    )
                     
                     # Create equity holding with accurate cost basis from RSU data
                     holding = EquityHolding(
@@ -587,7 +669,7 @@ class FACalculator:
                         holding_type="Vested",
                         grant_date=None,  # Not available in RSU records
                         grant_number=grant_number,
-                        vest_date=latest_vesting.vesting_date,
+                        vest_date=latest_vesting.vesting_date if latest_vesting else None,
                         calendar_year=calendar_year
                     )
                     
@@ -617,7 +699,8 @@ class FACalculator:
         self,
         rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
-        calendar_year: str
+        calendar_year: str,
+        benefit_records: Optional[List[BenefitHistoryRecord]] = None,
     ) -> Dict[str, Dict]:
         """Calculate opening, closing, and peak balances for the year."""
         
@@ -702,16 +785,34 @@ class FACalculator:
             date_str = calc_date.strftime("%Y-%m-%d")
             
             try:
-                # APPLY FORMULA 4: Calculate holdings as of this specific date
-                holdings = self.process_rsu_equity_holdings(rsu_records, gl_records, calc_date)
-                
-                # APPLY FORMULA 5: Calculate total values using date-specific rates
-                total_value_usd = sum(h.market_value_usd_total for h in holdings)
-                vested_value_inr = sum(h.market_value_inr_total for h in holdings if h.holding_type == "Vested")
-                
                 # Get date-specific rates with fallback logic (Formula 5)
                 exchange_rate = self.get_date_specific_exchange_rate(calc_date)
                 stock_price = self.get_date_specific_stock_price(calc_date)
+
+                if benefit_records:
+                    holdings_by_grant = self._benefit_holdings_by_grant(
+                        benefit_records, calc_date
+                    )
+                    total_shares = sum(holdings_by_grant.values())
+                    holdings_count = sum(
+                        1 for quantity in holdings_by_grant.values() if quantity > 0
+                    )
+                    total_value_usd = total_shares * stock_price
+                    vested_value_inr = total_value_usd * exchange_rate
+                else:
+                    # APPLY FORMULA 4: Calculate holdings as of this specific date
+                    holdings = self.process_rsu_equity_holdings(
+                        rsu_records, gl_records, calc_date
+                    )
+
+                    # APPLY FORMULA 5: Calculate total values using date-specific rates
+                    total_value_usd = sum(h.market_value_usd_total for h in holdings)
+                    vested_value_inr = sum(
+                        h.market_value_inr_total
+                        for h in holdings
+                        if h.holding_type == "Vested"
+                    )
+                    holdings_count = len(holdings)
                 
                 # Store comprehensive balance data for analysis and reporting
                 
@@ -721,7 +822,7 @@ class FACalculator:
                     'total_value_usd': total_value_usd,
                     'exchange_rate': exchange_rate,
                     'stock_price': stock_price,
-                    'holdings_count': len(holdings)
+                    'holdings_count': holdings_count
                 }
                 
                 logger.debug(f"Balance on {date_str}: ₹{vested_value_inr:,.2f}")
@@ -796,43 +897,95 @@ class FACalculator:
         self,
         rsu_records: List[RSUVestingRecord],
         gl_records: List[GLStatementRecord],
-        calendar_year: str
+        calendar_year: str,
+        benefit_records: Optional[List[BenefitHistoryRecord]] = None,
     ) -> Dict[str, float]:
         """Calculate comprehensive share statistics for the calendar year."""
         
         year = int(calendar_year)
-        
-        # Calculate total shares vested ever (before and during CL year)
-        total_vested_ever = sum(r.quantity for r in rsu_records)
-        
-        # Calculate total shares sold ever
-        total_sold_ever = sum(r.quantity for r in gl_records if r.quantity)
-        
-        # Calculate shares sold during CL year
         cl_start = Date(year, 1, 1)
         cl_end = Date(year, 12, 31)
-        total_sold_in_cl = sum(
-            r.quantity for r in gl_records 
-            if r.quantity and cl_start <= r.date_sold <= cl_end
-        )
-        
-        # Calculate shares vested before CL year
-        vested_before_cl = sum(
-            r.quantity for r in rsu_records 
-            if r.vesting_date < cl_start
-        )
-        
-        # Calculate shares sold before CL year
-        sold_before_cl = sum(
-            r.quantity for r in gl_records 
-            if r.quantity and r.date_sold < cl_start
-        )
-        
-        # Opening balance shares = vested before CL - sold before CL
-        opening_shares = max(0.0, vested_before_cl - sold_before_cl)
-        
-        # Current holdings = total vested ever - total sold ever
-        current_holdings = max(0.0, total_vested_ever - total_sold_ever)
+
+        if benefit_records:
+            relevant_events = [
+                record
+                for record in benefit_records
+                if record.record_type == "Event"
+                and record.date
+                and record.date <= cl_end
+                and record.qty_or_amount
+            ]
+            total_vested_ever = sum(
+                float(record.qty_or_amount)
+                for record in relevant_events
+                if record.event_type == "Shares vested"
+            )
+            total_sold_ever = sum(
+                float(record.qty_or_amount)
+                for record in relevant_events
+                if record.event_type == "Shares sold"
+            )
+            total_sold_in_cl = sum(
+                float(record.qty_or_amount)
+                for record in relevant_events
+                if record.event_type == "Shares sold"
+                and cl_start <= record.date <= cl_end
+            )
+            vested_before_cl = sum(
+                float(record.qty_or_amount)
+                for record in relevant_events
+                if record.event_type == "Shares vested" and record.date < cl_start
+            )
+            sold_before_cl = sum(
+                float(record.qty_or_amount)
+                for record in relevant_events
+                if record.event_type == "Shares sold" and record.date < cl_start
+            )
+            opening_shares = sum(
+                self._benefit_holdings_by_grant(
+                    benefit_records, cl_start - timedelta(days=1)
+                ).values()
+            )
+            current_holdings = sum(
+                self._benefit_holdings_by_grant(benefit_records, cl_end).values()
+            )
+        else:
+            relevant_vests = [
+                record for record in rsu_records if record.vesting_date <= cl_end
+            ]
+            total_vested_ever = sum(record.quantity for record in relevant_vests)
+            total_sold_ever = sum(
+                record.quantity or 0
+                for record in gl_records
+                if record.date_sold and record.date_sold <= cl_end
+            )
+            total_sold_in_cl = sum(
+                record.quantity or 0
+                for record in gl_records
+                if record.date_sold and cl_start <= record.date_sold <= cl_end
+            )
+            vested_before_cl = sum(
+                record.quantity
+                for record in relevant_vests
+                if record.vesting_date < cl_start
+            )
+            sold_before_cl = sum(
+                record.quantity or 0
+                for record in gl_records
+                if record.date_sold and record.date_sold < cl_start
+            )
+            opening_shares = sum(
+                balance[3]
+                for balance in self._calculate_rsu_lot_balances(
+                    rsu_records, gl_records, cl_start - timedelta(days=1)
+                )
+            )
+            current_holdings = sum(
+                balance[3]
+                for balance in self._calculate_rsu_lot_balances(
+                    rsu_records, gl_records, cl_end
+                )
+            )
         
         logger.info(f"Share Statistics for {calendar_year}:")
         logger.info(f"  Total vested ever: {total_vested_ever:.2f}")
@@ -911,7 +1064,8 @@ class FACalculator:
                             sales_through_current_year += record.quantity
                     
                     current_year_sales = sold_shares_by_vest_current_year.get(vest_key, 0.0)
-                    shares_remaining_at_year_end = vest.quantity - sales_through_current_year
+                    released_shares = self._released_shares(vest)
+                    shares_remaining_at_year_end = released_shares - sales_through_current_year
                     vested_in_current_year = year_start <= vest.vesting_date <= year_end
                     vested_before_current_year = vest.vesting_date < year_start
                     
@@ -944,6 +1098,7 @@ class FACalculator:
             for i, vest in enumerate(relevant_vests):
                 logger.debug(f"Processing vest {i+1}/{len(relevant_vests)}: {vest.grant_number} on {vest.vesting_date}")
                 vest_key = f"{vest.grant_number}_{vest.vesting_date}"
+                released_shares = self._released_shares(vest)
                 shares_sold_from_vest_current_year = sold_shares_by_vest_current_year.get(vest_key, 0.0)
                 
                 # Calculate shares sold through the end of current calendar year (not all years)
@@ -954,10 +1109,10 @@ class FACalculator:
                         record.date_acquired == vest.vesting_date):
                         shares_sold_through_current_year += record.quantity
                 
-                remaining_shares = max(0.0, vest.quantity - shares_sold_through_current_year)
+                remaining_shares = max(0.0, released_shares - shares_sold_through_current_year)
                 
                 # Calculate initial value at vesting
-                initial_value_usd = vest.quantity * vest.fmv_usd
+                initial_value_usd = released_shares * vest.fmv_usd
                 initial_value_inr = initial_value_usd * vest.forex_rate  # Calculate correctly instead of using potentially incorrect PDF value
                 
                 # Calculate peak value during the calendar year
@@ -994,12 +1149,19 @@ class FACalculator:
                         stock_price = self.get_date_specific_stock_price(calc_date)
                         exchange_rate = self.get_date_specific_exchange_rate(calc_date)
                         
-                        # Calculate shares remaining at this date (considering sales)
-                        shares_at_date = vest.quantity
-                        if shares_sold_from_vest_current_year > 0:
-                            # For simplicity, assume sales happened at end of year
-                            # (more complex logic could track exact sale dates)
-                            shares_at_date = vest.quantity if calc_date < year_end_date else remaining_shares
+                        # Calculate shares remaining at this date using the
+                        # originating vest lot and actual sale dates.
+                        shares_sold_by_date = sum(
+                            record.quantity or 0
+                            for record in gl_records
+                            if record.date_sold
+                            and record.date_sold <= calc_date
+                            and record.grant_number == vest.grant_number
+                            and record.date_acquired == vest.vesting_date
+                        )
+                        shares_at_date = max(
+                            0.0, released_shares - shares_sold_by_date
+                        )
                         
                         month_value_inr = shares_at_date * stock_price * exchange_rate
                         
@@ -1029,7 +1191,9 @@ class FACalculator:
                 vest_detail = VestWiseDetails(
                     vest_date=vest.vesting_date,
                     grant_number=vest.grant_number,
-                    initial_shares=vest.quantity,
+                    initial_shares=released_shares,
+                    gross_vested_shares=vest.quantity,
+                    withheld_shares=vest.wh_quantity,
                     initial_value_usd=initial_value_usd,
                     initial_value_inr=initial_value_inr,
                     initial_stock_price=vest.fmv_usd,
@@ -1064,7 +1228,8 @@ class FACalculator:
         calendar_year: str,
         equity_holdings: List[EquityHolding],
         rsu_records: List[RSUVestingRecord] = None,
-        gl_records: List[GLStatementRecord] = None
+        gl_records: List[GLStatementRecord] = None,
+        benefit_records: Optional[List[BenefitHistoryRecord]] = None,
     ) -> FADeclarationSummary:
         """Calculate FA declaration summary with opening, closing, and peak balances."""
         
@@ -1075,13 +1240,21 @@ class FACalculator:
             declaration_date=Date.today(),
             calendar_year=str(calendar_year)
         )
+
+        has_source_data = (
+            rsu_records is not None
+            and gl_records is not None
+            and bool(rsu_records or benefit_records)
+        )
         
         # Calculate comprehensive share statistics and balance analysis if data is available
-        if rsu_records and gl_records:
+        if has_source_data:
             logger.info(f"Calculating comprehensive balance analysis for {calendar_year}")
             
             # Calculate detailed share statistics
-            share_stats = self.calculate_share_statistics(rsu_records, gl_records, calendar_year)
+            share_stats = self.calculate_share_statistics(
+                rsu_records, gl_records, calendar_year, benefit_records
+            )
             
             # Populate share statistics in summary
             summary.total_vested_shares = share_stats['current_holdings']  # Currently held
@@ -1090,7 +1263,9 @@ class FACalculator:
             summary.total_sold_ever = share_stats['total_sold_ever']
             
             # Calculate balance timelines
-            balance_calculations = self.calculate_year_balances(rsu_records, gl_records, calendar_year)
+            balance_calculations = self.calculate_year_balances(
+                rsu_records, gl_records, calendar_year, benefit_records
+            )
             
             # Extract opening balance (Jan 1)
             opening_key = f"{calendar_year}-01-01"
@@ -1149,7 +1324,7 @@ class FACalculator:
         # Aggregate vested holdings value (from year-end holdings)
         for holding in year_holdings:
             if holding.holding_type == "Vested":
-                if not (rsu_records and gl_records):
+                if not has_source_data:
                     summary.total_vested_shares += holding.quantity
                 summary.vested_holdings_usd += holding.market_value_usd_total
                 summary.vested_holdings_inr += holding.market_value_inr_total

@@ -9,7 +9,7 @@ from equitywise.calculators.fa_calculator import (
     FACalculator, EquityHolding, FADeclarationSummary, FACalculationResults, VestWiseDetails
 )
 from equitywise.data.models import (
-    GLStatementRecord, SBIRateRecord, AdobeStockRecord
+    BenefitHistoryRecord, GLStatementRecord, SBIRateRecord, AdobeStockRecord
 )
 from equitywise.data.esop_parser import ESOPVestingRecord
 
@@ -511,22 +511,37 @@ class TestFACalculatorEdgeCases:
             )
         ]
         
-        # Partial sale of 4 shares (should use FIFO: 3 from first + 1 from second)
+        # Partial sale of 4 shares (3 from first vest + 1 from second vest)
         partial_sale_gl = [
             GLStatementRecord(
                 record_type="Sell",
                 symbol="ADBE",
-                quantity=4.0,
-                date_acquired=date(2023, 1, 15),  # Uses earliest vest date
+                quantity=3.0,
+                date_acquired=date(2023, 1, 15),
                 date_sold=date(2024, 6, 15),
-                total_proceeds=2000.0,
+                total_proceeds=1500.0,
                 proceeds_per_share=500.0,
-                adjusted_cost_basis=1650.0,  # FIFO cost basis
-                adjusted_gain_loss=350.0,
+                adjusted_cost_basis=1200.0,
+                adjusted_gain_loss=300.0,
                 grant_date=date(2022, 1, 15),
                 vest_date=date(2023, 1, 15),
                 grant_number="RU_MULTI",
-                order_number="PARTIAL"
+                order_number="PARTIAL_1"
+            ),
+            GLStatementRecord(
+                record_type="Sell",
+                symbol="ADBE",
+                quantity=1.0,
+                date_acquired=date(2023, 6, 15),
+                date_sold=date(2024, 6, 15),
+                total_proceeds=500.0,
+                proceeds_per_share=500.0,
+                adjusted_cost_basis=450.0,
+                adjusted_gain_loss=50.0,
+                grant_date=date(2022, 1, 15),
+                vest_date=date(2023, 6, 15),
+                grant_number="RU_MULTI",
+                order_number="PARTIAL_2"
             )
         ]
         
@@ -541,10 +556,122 @@ class TestFACalculatorEdgeCases:
         # Should have 4 shares remaining (8 total - 4 sold)
         assert holding.quantity == 4  # Fixed: use 'quantity' not 'current_shares'
         
-        # Cost basis should match G&L adjusted_cost_basis (calculator uses G&L data for accuracy)
-        # The G&L record shows adjusted_cost_basis=1650.0 which reflects actual tax basis
-        expected_cost_basis = 1650.0  # Fixed: match G&L adjusted_cost_basis
+        # Remaining basis is two shares from the second lot and two from the third.
+        expected_cost_basis = (2 * 450.0) + (2 * 500.0)
         assert abs(holding.cost_basis_usd_total - expected_cost_basis) < 1.0
+
+    def test_fa_uses_released_lots_and_complete_benefit_history(self, fa_calculator):
+        """Withheld and historical-lot shares must not distort closing holdings."""
+        rsu_records = [
+            ESOPVestingRecord(
+                employee_id="FA_TEST",
+                employee_name="FA Test Employee",
+                vesting_date=date(2025, 4, 15),
+                grant_number="RU_WITHHOLD",
+                fmv_usd=350.0,
+                quantity=4,
+                wh_quantity=1,
+                total_usd=1400.0,
+                forex_rate=84.0,
+                total_inr=117600.0,
+            ),
+            ESOPVestingRecord(
+                employee_id="FA_TEST",
+                employee_name="FA Test Employee",
+                vesting_date=date(2025, 11, 15),
+                grant_number="RU_WITHHOLD",
+                fmv_usd=400.0,
+                quantity=6,
+                wh_quantity=1,
+                total_usd=2400.0,
+                forex_rate=84.0,
+                total_inr=201600.0,
+            ),
+        ]
+        gl_records = [
+            # This older acquisition is absent from the single-FY RSU statement.
+            GLStatementRecord(
+                record_type="Sell",
+                symbol="ADBE",
+                quantity=10.0,
+                date_acquired=date(2024, 1, 15),
+                date_sold=date(2025, 1, 31),
+                total_proceeds=5000.0,
+                proceeds_per_share=500.0,
+                adjusted_cost_basis=4000.0,
+                adjusted_gain_loss=1000.0,
+                grant_number="RU_WITHHOLD",
+            ),
+            GLStatementRecord(
+                record_type="Sell",
+                symbol="ADBE",
+                quantity=3.0,
+                date_acquired=date(2025, 4, 15),
+                date_sold=date(2025, 5, 2),
+                total_proceeds=1140.0,
+                proceeds_per_share=380.0,
+                adjusted_cost_basis=1050.0,
+                adjusted_gain_loss=90.0,
+                grant_number="RU_WITHHOLD",
+            ),
+        ]
+        benefit_records = [
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares vested",
+                date=date(2024, 1, 15), grant_number="RU_WITHHOLD", qty_or_amount=10.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares released",
+                date=date(2024, 1, 15), grant_number="RU_WITHHOLD", qty_or_amount=10.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares sold",
+                date=date(2025, 1, 31), grant_number="RU_WITHHOLD", qty_or_amount=10.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares vested",
+                date=date(2025, 4, 15), grant_number="RU_WITHHOLD", qty_or_amount=4.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares released",
+                date=date(2025, 4, 15), grant_number="RU_WITHHOLD", qty_or_amount=3.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares sold",
+                date=date(2025, 5, 2), grant_number="RU_WITHHOLD", qty_or_amount=3.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares vested",
+                date=date(2025, 11, 15), grant_number="RU_WITHHOLD", qty_or_amount=6.0,
+            ),
+            BenefitHistoryRecord(
+                record_type="Event", event_type="Shares released",
+                date=date(2025, 11, 15), grant_number="RU_WITHHOLD", qty_or_amount=5.0,
+            ),
+        ]
+
+        holdings = fa_calculator.process_rsu_equity_holdings(
+            rsu_records,
+            gl_records,
+            date(2025, 12, 31),
+            benefit_records=benefit_records,
+        )
+        summary = fa_calculator.calculate_fa_summary(
+            "2025",
+            holdings,
+            rsu_records,
+            gl_records,
+            benefit_records=benefit_records,
+        )
+
+        assert sum(holding.quantity for holding in holdings) == 5.0
+        assert summary.total_vested_shares == 5.0
+        assert summary.closing_shares == 5.0
+        assert sum(detail.closing_shares for detail in summary.vest_wise_details) == 5.0
+        assert summary.closing_balance_inr == pytest.approx(
+            sum(detail.closing_value_inr for detail in summary.vest_wise_details)
+        )
+        assert sum(detail.withheld_shares for detail in summary.vest_wise_details) == 2.0
 
 
 class TestFACalculatorIntegration:

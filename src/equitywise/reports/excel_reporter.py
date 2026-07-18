@@ -543,7 +543,7 @@ class ExcelReporter:
             ["", "Opening Rate", summary.opening_exchange_rate, "Jan 1 rate"],
             ["", "Peak Rate", summary.peak_exchange_rate, "Highest during year"],
             ["", "", "", ""],
-            ["Declaration", "Declaration Required?", "YES" if summary.closing_balance_inr >= summary.fa_declaration_threshold_inr else "NO", f"Threshold: ₹{summary.fa_declaration_threshold_inr:,.0f}"],
+            ["Declaration", "Declaration Required?", "YES" if summary.declaration_required else "NO", f"Threshold: ₹{summary.fa_declaration_threshold_inr:,.0f}"],
             ["", "Total Value (USD)", summary.vested_holdings_usd, "At year-end rates"],
             ["", "Total Value (INR)", summary.vested_holdings_inr, "At year-end rates"]
         ]

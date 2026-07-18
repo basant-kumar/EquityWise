@@ -35,7 +35,13 @@ class VestingEvent(BaseModel):
     taxable_gain_usd: float  # (vest_fmv - grant_price) * quantity
     taxable_gain_inr: float  # Taxable gain in INR
     taxes_withheld: Optional[float] = None  # US taxes withheld
+    withheld_quantity: float = 0.0  # Shares withheld for payroll tax
     financial_year: str  # Indian FY (e.g., "FY2025")
+
+    @property
+    def released_quantity(self) -> float:
+        """Shares actually delivered to the employee after withholding."""
+        return max(0.0, self.vested_quantity - self.withheld_quantity)
     
     @property
     def is_current_fy(self) -> bool:
@@ -378,6 +384,7 @@ class RSUCalculator:
                     exchange_rate=exchange_rate,
                     taxable_gain_usd=total_taxable_gain_usd,
                     taxable_gain_inr=total_taxable_gain_inr,
+                    withheld_quantity=record.wh_quantity,
                     financial_year=self.calculate_financial_year(vest_date)
                 )
                 

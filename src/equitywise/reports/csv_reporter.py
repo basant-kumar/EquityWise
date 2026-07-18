@@ -278,7 +278,7 @@ class CSVReporter:
             ["", "Opening Rate", f"₹{summary.opening_exchange_rate:.4f}/USD", "Jan 1 rate"],
             ["", "Peak Rate", f"₹{summary.peak_exchange_rate:.4f}/USD", "Highest during year"],
             ["", "", "", ""],
-            ["Declaration", "Declaration Required?", "YES" if summary.closing_balance_inr >= summary.fa_declaration_threshold_inr else "NO", f"Threshold: ₹{summary.fa_declaration_threshold_inr:,.0f}"],
+            ["Declaration", "Declaration Required?", "YES" if summary.declaration_required else "NO", f"Threshold: ₹{summary.fa_declaration_threshold_inr:,.0f}"],
             ["", "Total Value (USD)", f"${summary.vested_holdings_usd:,.2f}", "At year-end rates"],
             ["", "Total Value (INR)", f"₹{summary.vested_holdings_inr:,.2f}", "At year-end rates"]
         ]

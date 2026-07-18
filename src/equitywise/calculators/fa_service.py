@@ -237,6 +237,11 @@ class FAService:
         
         # STEP 2: Load all required data sources
         rsu_records, gl_records, sbi_records, stock_records = self.load_required_data()
+        benefit_records = []
+        if self.settings.benefit_history_path.exists():
+            benefit_records = BenefitHistoryLoader(
+                self.settings.benefit_history_path
+            ).get_validated_records()
         
         # STEP 3: Initialize calculator with rate and price data
         calculator = FACalculator(sbi_records, stock_records)
@@ -244,18 +249,29 @@ class FAService:
         # STEP 4: Process equity holdings using RSU data for accurate cost basis
         self.console.print("🔄 Processing equity holdings with RSU data...")
         
-        equity_holdings = calculator.process_rsu_equity_holdings(rsu_records, gl_records, as_of_date)
+        equity_holdings = calculator.process_rsu_equity_holdings(
+            rsu_records,
+            gl_records,
+            as_of_date,
+            benefit_records=benefit_records,
+        )
         
         logger.info(f"Processed {len(equity_holdings)} equity holdings")
         
         # STEP 5: Calculate comprehensive FA summary with balance analysis
-        fa_summary = calculator.calculate_fa_summary(calendar_year, equity_holdings, rsu_records, gl_records)
+        fa_summary = calculator.calculate_fa_summary(
+            calendar_year,
+            equity_holdings,
+            rsu_records,
+            gl_records,
+            benefit_records=benefit_records,
+        )
         
         # Create results
         results = FACalculationResults(
             calculation_date=Date.today(),
             calendar_year=str(calendar_year),
-            benefit_history_records=len(rsu_records),  # Now using RSU records count
+            benefit_history_records=len(benefit_records),
             stock_price_records=len(stock_records),
             sbi_rate_records=len(sbi_records),
             equity_holdings=equity_holdings if detailed else [],

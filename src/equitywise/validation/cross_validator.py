@@ -581,14 +581,19 @@ class CrossValidator:
                     }
                 )
             else:
-                # Compare quantities
-                fa_total_shares = fa_vest.closing_shares + fa_vest.shares_sold
-                if not self._values_match(rsu_vest.vested_quantity, fa_total_shares):
+                # Gross vesting is taxable salary income, but only released
+                # shares become a foreign asset. Validate both quantities.
+                fa_gross_shares = getattr(
+                    fa_vest, "gross_vested_shares", fa_vest.initial_shares
+                )
+                if not self._values_match(
+                    rsu_vest.vested_quantity, fa_gross_shares
+                ):
                     result.add_error(
                         "Cross-Calculation",
-                        f"Vesting quantity mismatch between RSU and FA calculations",
+                        "Gross vesting quantity mismatch between RSU and FA calculations",
                         expected=f"{rsu_vest.vested_quantity} shares (RSU calculation)",
-                        actual=f"{fa_total_shares} shares (FA calculation: {fa_vest.closing_shares} held + {fa_vest.shares_sold} sold)",
+                        actual=f"{fa_gross_shares} shares (FA gross vesting)",
                         context={
                             "overlap_period": f"{start_date} to {end_date}",
                             "grant_number": rsu_vest.grant_number,
@@ -598,13 +603,35 @@ class CrossValidator:
                                 "taxable_gain_inr": rsu_vest.taxable_gain_inr
                             },
                             "fa_calculation": {
-                                "closing_shares": fa_vest.closing_shares,
-                                "shares_sold": fa_vest.shares_sold,
-                                "total_shares": fa_total_shares
+                                "gross_vested_shares": fa_gross_shares,
+                                "withheld_shares": getattr(fa_vest, "withheld_shares", 0.0),
                             },
-                            "discrepancy_analysis": f"Difference of {abs(float(rsu_vest.vested_quantity) - float(fa_total_shares))} shares",
+                            "discrepancy_analysis": f"Difference of {abs(float(rsu_vest.vested_quantity) - float(fa_gross_shares))} shares",
                             "recommendation": f"Verify share calculations for grant {rsu_vest.grant_number} - check for data inconsistencies between RSU and FA data sources"
                         }
+                    )
+
+                expected_released = getattr(
+                    rsu_vest, "released_quantity", rsu_vest.vested_quantity
+                )
+                fa_released_shares = fa_vest.closing_shares + fa_vest.shares_sold
+                if not self._values_match(expected_released, fa_released_shares):
+                    result.add_error(
+                        "Cross-Calculation",
+                        "Released-share quantity mismatch between RSU and FA calculations",
+                        expected=f"{expected_released} shares (gross vesting less withholding)",
+                        actual=(
+                            f"{fa_released_shares} shares (FA calculation: "
+                            f"{fa_vest.closing_shares} held + {fa_vest.shares_sold} sold)"
+                        ),
+                        context={
+                            "overlap_period": f"{start_date} to {end_date}",
+                            "grant_number": rsu_vest.grant_number,
+                            "vest_date": str(rsu_vest.vest_date),
+                            "gross_vested_shares": rsu_vest.vested_quantity,
+                            "withheld_shares": getattr(rsu_vest, "withheld_quantity", 0.0),
+                            "recommendation": "Match G&L sales by grant number and acquisition date",
+                        },
                     )
     
     def _compare_overlap_sales(
