@@ -1,17 +1,19 @@
 """RSU Service - Main integration service for RSU calculations."""
 
 from datetime import date as Date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Optional, Tuple, Any
 from pathlib import Path
 
 from loguru import logger
 from rich.progress import Progress, TaskID
 from rich.console import Console
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .rsu_calculator import RSUCalculator, VestingEvent, SaleEvent, RSUCalculationSummary
 from ..data.loaders import (
-    GLStatementLoader, SBIRatesLoader, AdobeStockDataLoader, RSULoader
+    GLStatementLoader, SBIRatesLoader, AdobeStockDataLoader, RSULoader,
+    BankStatementLoader,
 )
 from ..data.models import (
     GLStatementRecord, SBIRateRecord, AdobeStockRecord, RSUVestingRecord
@@ -34,6 +36,7 @@ class RSUCalculationResults(BaseModel):
     # Processed Events
     vesting_events: List[VestingEvent] = []
     sale_events: List[SaleEvent] = []
+    bank_transactions: Dict[Date, Dict[str, Any]] = Field(default_factory=dict)
     
     # Financial Year Summaries
     fy_summaries: Dict[str, RSUCalculationSummary] = {}
@@ -48,6 +51,8 @@ class RSUCalculationResults(BaseModel):
     # Additional Summary Fields for Enhanced Display
     total_cost_basis_inr: float = 0.0  # Total purchase amount of sold shares
     total_sale_proceeds_inr: float = 0.0  # Total sold amount (proceeds from sales)
+    total_sale_expenses_usd: float = 0.0
+    total_sale_expenses_inr: float = 0.0
     short_term_gains_inr: float = 0.0  # Short-term capital gains
     long_term_gains_inr: float = 0.0  # Long-term capital gains
     
@@ -64,6 +69,98 @@ class RSUService:
         """Initialize RSU service."""
         self.settings = settings
         self.console = Console()
+
+    def _load_bank_transactions_for_sales(
+        self, sale_events: List[SaleEvent]
+    ) -> Dict[Date, Dict[str, Any]]:
+        """Match broker remittances to sale dates and derive omitted sale fees.
+
+        Matching is one-to-one and prioritizes the smallest date gap, avoiding
+        the previous behavior where a transaction could be reused or matched
+        to the first date encountered rather than the closest sale.
+        """
+        if not sale_events:
+            return {}
+
+        candidates: List[Dict[str, Any]] = []
+        for bank_path in self.settings.get_bank_statement_files(
+            use_auto_discovery=True
+        ):
+            try:
+                records = BankStatementLoader(bank_path).get_validated_records(
+                    str(bank_path)
+                )
+                for record in records:
+                    if not record.is_broker_transaction:
+                        continue
+                    details = record.extract_broker_details()
+                    if details:
+                        candidates.append({
+                            "bank_date": record.transaction_date,
+                            **details,
+                        })
+            except Exception as exc:
+                logger.warning(
+                    f"Could not load bank statement {bank_path.name} for "
+                    f"sale-expense matching: {exc}"
+                )
+
+        sale_dates = sorted({event.sale_date for event in sale_events})
+        possible_matches = sorted(
+            (
+                abs((candidate["bank_date"] - sale_date).days),
+                sale_date,
+                candidate_index,
+            )
+            for sale_date in sale_dates
+            for candidate_index, candidate in enumerate(candidates)
+            if abs((candidate["bank_date"] - sale_date).days) <= 5
+        )
+
+        matched_dates = set()
+        matched_candidates = set()
+        matches: Dict[Date, Dict[str, Any]] = {}
+        for _, sale_date, candidate_index in possible_matches:
+            if sale_date in matched_dates or candidate_index in matched_candidates:
+                continue
+
+            date_events = [
+                event for event in sale_events if event.sale_date == sale_date
+            ]
+            gross_usd = sum(event.sale_proceeds_usd for event in date_events)
+            bank_data = candidates[candidate_index]
+            bank_usd = bank_data["bank_usd_amount"]
+            sale_expense_usd = float(
+                (
+                    Decimal(str(gross_usd)) - Decimal(str(bank_usd))
+                ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            )
+
+            if sale_expense_usd < 0:
+                logger.warning(
+                    f"Bank USD ${bank_usd:,.2f} exceeds G&L proceeds "
+                    f"${gross_usd:,.2f} for {sale_date}; no sale expense deducted"
+                )
+                sale_expense_usd = 0.0
+
+            expected_rate = date_events[0].exchange_rate_sale
+            matches[sale_date] = {
+                "sale_date": sale_date,
+                **bank_data,
+                "expected_usd_amount": gross_usd,
+                "expected_inr_amount": sum(
+                    event.sale_proceeds_usd * event.exchange_rate_sale
+                    for event in date_events
+                ),
+                "sale_expense_usd": sale_expense_usd,
+                "exchange_rate_gain_loss": (
+                    bank_data["bank_exchange_rate"] - expected_rate
+                ) * bank_usd,
+            }
+            matched_dates.add(sale_date)
+            matched_candidates.add(candidate_index)
+
+        return matches
         
     def load_all_data(self) -> Tuple[
         List[RSUVestingRecord], 
@@ -214,6 +311,14 @@ class RSUService:
         
         vesting_events = calculator.process_rsu_vesting_events(rsu_records)
         sale_events = calculator.process_sale_events(gl_records)
+        bank_transactions = self._load_bank_transactions_for_sales(sale_events)
+        calculator.apply_sale_expenses(
+            sale_events,
+            {
+                sale_date: transaction["sale_expense_usd"]
+                for sale_date, transaction in bank_transactions.items()
+            },
+        )
         
         logger.info(f"Processed {len(vesting_events)} vesting events and {len(sale_events)} sale events")
         
@@ -302,6 +407,8 @@ class RSUService:
         # Additional aggregated metrics for enhanced summary display
         total_cost_basis_inr = sum(s.cost_basis_inr for s in filtered_sales)
         total_sale_proceeds_inr = sum(s.sale_proceeds_inr for s in filtered_sales)
+        total_sale_expenses_usd = sum(s.sale_expense_usd for s in filtered_sales)
+        total_sale_expenses_inr = sum(s.sale_expense_inr for s in filtered_sales)
         short_term_gains_inr = sum(s.capital_gain_inr for s in filtered_sales if s.gain_type == "Short-term")
         long_term_gains_inr = sum(s.capital_gain_inr for s in filtered_sales if s.gain_type == "Long-term")
         
@@ -315,6 +422,16 @@ class RSUService:
             stock_data_records=len(stock_records),
             vesting_events=filtered_vestings if detailed else [],
             sale_events=filtered_sales if detailed else [],
+            bank_transactions={
+                sale_date: transaction
+                for sale_date, transaction in bank_transactions.items()
+                if not financial_year
+                or any(
+                    sale.sale_date == sale_date
+                    and sale.financial_year == financial_year
+                    for sale in filtered_sales
+                )
+            },
             fy_summaries=fy_summaries,
             total_vested_quantity=total_vested,
             total_sold_quantity=total_sold,
@@ -323,6 +440,8 @@ class RSUService:
             net_position_inr=net_position_inr,
             total_cost_basis_inr=total_cost_basis_inr,
             total_sale_proceeds_inr=total_sale_proceeds_inr,
+            total_sale_expenses_usd=total_sale_expenses_usd,
+            total_sale_expenses_inr=total_sale_expenses_inr,
             short_term_gains_inr=short_term_gains_inr,
             long_term_gains_inr=long_term_gains_inr
         )

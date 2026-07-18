@@ -5,6 +5,18 @@ All notable changes to the EquityWise project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- Deduct confirmed selling expenses that are absent from broker G&L statements
+  when calculating capital gains under Section 48.
+- Convert deductible USD sale expenses using each sale date's Rule 115 rate.
+- Match bank remittances one-to-one with the nearest sale date and use exact
+  bank credits, including line-level rounding, for cash reconciliation.
+- Show gross G&L gain, deductible sale expense, and net capital gain separately
+  in CLI, Excel, and CSV reports.
+
 ## [2.0.0] - 2025-09-07
 
 ### 🆕 Major New Features

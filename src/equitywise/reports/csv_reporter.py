@@ -138,6 +138,8 @@ class CSVReporter:
             ["", "Average Exchange Rate", f"₹{summary.average_exchange_rate:.4f}/USD", ""],
             ["", "", "", ""],
             ["Sales", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
+            ["", "Gross Sale Proceeds", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
+            ["", "Deductible Sale Expenses", f"${summary.total_sale_expenses_usd:,.2f}", f"₹{summary.total_sale_expenses_inr:,.2f}"],
             ["", "Total Capital Gains", f"${summary.total_capital_gains_usd:,.2f}", f"₹{summary.total_capital_gains_inr:,.2f}"],
             ["", "Short-term Gains", f"${summary.short_term_gains_usd:,.2f}", f"₹{summary.short_term_gains_inr:,.2f}"],
             ["", "Long-term Gains", f"${summary.long_term_gains_usd:,.2f}", f"₹{summary.long_term_gains_inr:,.2f}"],
@@ -197,8 +199,12 @@ class CSVReporter:
                 'Sale Proceeds (INR)': f"{event.sale_proceeds_inr:.2f}",
                 'Cost Basis (USD)': f"{event.cost_basis_usd:.2f}",
                 'Cost Basis (INR)': f"{event.cost_basis_inr:.2f}",
-                'Capital Gain (USD)': f"{event.capital_gain_usd:.2f}",
-                'Capital Gain (INR)': f"{event.capital_gain_inr:.2f}",
+                'Gross Capital Gain (USD)': f"{event.gross_capital_gain_usd:.2f}",
+                'Gross Capital Gain (INR)': f"{event.gross_capital_gain_inr:.2f}",
+                'Deductible Sale Expense (USD)': f"{event.sale_expense_usd:.2f}",
+                'Deductible Sale Expense (INR)': f"{event.sale_expense_inr:.2f}",
+                'Net Capital Gain (USD)': f"{event.capital_gain_usd:.2f}",
+                'Net Capital Gain (INR)': f"{event.capital_gain_inr:.2f}",
                 'Holding Period (Days)': f"{event.holding_period_days}",
                 'Gain Type': event.gain_type,
                 'Financial Year': event.financial_year,
@@ -229,19 +235,21 @@ class CSVReporter:
             total_usd = sum(event.sale_proceeds_usd for event in events)
             
             # Find matching bank transaction
-            bank_match = None
-            for tx in bank_transactions:
-                if abs((tx['bank_date'] - sale_date).days) <= 7:  # Within 7 days
-                    bank_match = tx
-                    break
+            bank_match = next(
+                (
+                    tx for tx in bank_transactions
+                    if tx.get('sale_date') == sale_date
+                ),
+                None,
+            )
             
             recon_data.append({
                 'Sale Date': sale_date.strftime('%d/%m/%Y'),
                 'Expected USD': f"{total_usd:.2f}",
                 'Expected INR': f"{total_usd * events[0].exchange_rate_sale:.2f}",
-                'Bank Received USD': f"{bank_match.get('usd_amount', 0):.2f}" if bank_match else "Not Found",
-                'Bank Received INR': f"{bank_match.get('inr_after_gst', 0):.2f}" if bank_match else "Not Found",
-                'Transfer Expense (USD)': f"{total_usd - bank_match.get('usd_amount', 0):.2f}" if bank_match else "N/A",
+                'Bank Received USD': f"{bank_match.get('bank_usd_amount', 0):.2f}" if bank_match else "Not Found",
+                'Bank Received INR': f"{bank_match.get('actual_received', 0):.2f}" if bank_match else "Not Found",
+                'Deductible Sale Expense (USD)': f"{bank_match.get('sale_expense_usd', 0):.2f}" if bank_match else "N/A",
                 'Exchange Rate Diff (INR)': f"{bank_match.get('exchange_rate_gain_loss', 0):.2f}" if bank_match else "N/A"
             })
         

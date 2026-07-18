@@ -15,7 +15,7 @@ EquityWise is a comprehensive tool for processing E*Trade and Excelity data to c
 - **Comprehensive Data Validation**: Cross-validate data consistency between E*Trade, Excelity, and G&L statements
 - **CSV Export for Tax Forms**: Direct CSV export for FA declaration form import
 - **Enhanced Excel Reports**: Professional formatting with currency, totals, and dynamic column widths
-- **Bank Reconciliation**: Track equity proceeds and transfer expenses (multi-bank support)
+- **Bank Reconciliation**: Track exact bank credits and confirmed deductible selling expenses (multi-bank support)
 - **Interactive CLI**: Guided workflows with progress tracking and error recovery
 
 ## 🚀 **Quick Start**

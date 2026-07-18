@@ -253,59 +253,9 @@ def calculate_rsu(
             results = rsu_service.calculate_rsu_for_fy(financial_year, detailed)
             progress.update(calc_task, advance=100, description="[green]RSU calculations complete")
         
-        # Load bank statement data early to avoid logs appearing in middle of tables
-        bank_transactions = {}
-        if detailed and results.sale_events:
-            console.print(f"\n💰 [bold green]Loading Bank Statement Data...[/bold green]")
-            
-            try:
-                from .data.loaders import BankStatementLoader
-                from collections import defaultdict
-                
-                # Group sales by date first to know which dates to match
-                date_proceedings = defaultdict(lambda: {
-                    'total_shares': 0,
-                    'total_proceeds_usd': 0,
-                    'total_proceeds_inr': 0,
-                    'exchange_rate': 0,
-                    'transaction_count': 0
-                })
-
-                for sale in results.sale_events:
-                    date_key = sale.sale_date
-                    date_proceedings[date_key]['total_shares'] += sale.quantity_sold
-                    date_proceedings[date_key]['total_proceeds_usd'] += sale.sale_price_usd * sale.quantity_sold
-                    date_proceedings[date_key]['total_proceeds_inr'] += (
-                        sale.sale_proceeds_usd * sale.exchange_rate_sale
-                    )
-                    date_proceedings[date_key]['exchange_rate'] = sale.exchange_rate_sale
-                    date_proceedings[date_key]['transaction_count'] += 1
-                
-                for bank_path in settings.get_bank_statement_files(use_auto_discovery=True):
-                    if bank_path.exists():
-                        loader = BankStatementLoader(bank_path)
-                        records = loader.get_validated_records(str(bank_path))
-                        
-                        for record in records:
-                            if record.is_broker_transaction:
-                                # Match by approximate date (within a few days of sale date)
-                                for sale_date in date_proceedings.keys():
-                                    date_diff = abs((record.transaction_date - sale_date).days)
-                                    if date_diff <= 5:  # Within 5 days
-                                        broker_details = record.extract_broker_details()
-                                        if broker_details:
-                                            bank_transactions[sale_date] = {
-                                                'bank_date': record.transaction_date,
-                                                'bank_usd_amount': broker_details['bank_usd_amount'],
-                                                'bank_exchange_rate': broker_details['bank_exchange_rate'],
-                                                'inr_before_gst': broker_details['inr_before_gst'],
-                                                'gst_amount': broker_details['gst_amount'],
-                                                'inr_after_gst': broker_details['inr_after_gst'],
-                                                'actual_received': broker_details['actual_received']
-                                            }
-                                        break
-            except Exception as e:
-                console.print(f"[yellow]⚠️ Could not load bank statements: {e}[/yellow]")
+        # Bank remittances are loaded by the service before summaries are
+        # calculated so confirmed sale expenses reduce capital gains exactly once.
+        bank_transactions = results.bank_transactions if detailed else {}
         
         # Display results
         console.print(f"\n✅ [bold green]RSU Calculation Complete for {results.financial_year}[/bold green]")
@@ -1077,7 +1027,13 @@ def _display_rsu_summary_table(results, console) -> None:
     sold_table.add_row(
         "Total Sold Amount",
         f"₹{results.total_sale_proceeds_inr:,.2f}",
-        "Sale proceeds from all shares sold in financial year"
+        "Gross sale proceeds from all shares sold in financial year"
+    )
+
+    sold_table.add_row(
+        "Deductible Sale Expense",
+        f"${results.total_sale_expenses_usd:,.2f} / ₹{results.total_sale_expenses_inr:,.2f}",
+        "Selling expense omitted from broker G&L and deducted under Section 48"
     )
     
     # Short-term capital gains
@@ -1087,7 +1043,7 @@ def _display_rsu_summary_table(results, console) -> None:
     sold_table.add_row(
         "Capital Gain (Short-term)",
         short_term_text,
-        "Short-term capital gains (taxed as salary income)"
+        "Short-term capital gain/loss after deductible sale expenses"
     )
     
     # Long-term capital gains  
@@ -1097,7 +1053,7 @@ def _display_rsu_summary_table(results, console) -> None:
     sold_table.add_row(
         "Capital Gain (Long-term)",
         long_term_text,
-        "Long-term capital gains (10% tax + cess)"
+        "Long-term capital gain/loss after deductible sale expenses"
     )
     
     console.print("\n")
@@ -1198,6 +1154,7 @@ def _display_sale_events_table(sale_events, console) -> None:
     sales_table.add_column("Rule 115 Rate", style="magenta", justify="right", min_width=10, max_width=20, no_wrap=False)
     sales_table.add_column("USD Proceeds", style="green", justify="right", min_width=11, max_width=22, no_wrap=False)
     sales_table.add_column("INR Proceeds", style="green", justify="right", min_width=12, max_width=25, no_wrap=False)
+    sales_table.add_column("Sale Exp (USD)", style="red", justify="right", min_width=10, max_width=18, no_wrap=False)
     sales_table.add_column("Capital Gain (USD)", justify="right", min_width=13, max_width=25, no_wrap=False)  # Wrap instead of ellipsis
     sales_table.add_column("Capital Gain (INR)", justify="right", min_width=13, max_width=25, no_wrap=False)  # Wrap instead of ellipsis
     sales_table.add_column("Type", style="magenta", justify="center", min_width=4, max_width=10)
@@ -1207,6 +1164,7 @@ def _display_sale_events_table(sale_events, console) -> None:
     total_cost_basis = 0
     total_usd_proceeds = 0
     total_inr_proceeds = 0
+    total_sale_expenses_usd = 0
     total_capital_gains_usd = 0
     total_capital_gains_inr = 0
     
@@ -1221,6 +1179,7 @@ def _display_sale_events_table(sale_events, console) -> None:
         total_cost_basis += cost_basis
         total_usd_proceeds += usd_proceeds
         total_inr_proceeds += sale.sale_proceeds_inr
+        total_sale_expenses_usd += sale.sale_expense_usd
         total_capital_gains_usd += capital_gain_usd
         total_capital_gains_inr += sale.capital_gain_inr
         
@@ -1235,6 +1194,7 @@ def _display_sale_events_table(sale_events, console) -> None:
             f"₹{(sale.capital_gains_exchange_rate or sale.exchange_rate_sale):.4f}",
             f"${usd_proceeds:.2f}",
             f"₹{sale.sale_proceeds_inr:,.0f}",
+            f"${sale.sale_expense_usd:,.2f}",
             f"[{gain_color}]${capital_gain_usd:,.2f}[/{gain_color}]",
             f"[{gain_color}]₹{sale.capital_gain_inr:,.0f}[/{gain_color}]",
             sale.gain_type[:1],  # S for Short, L for Long
@@ -1255,6 +1215,7 @@ def _display_sale_events_table(sale_events, console) -> None:
         "[bold]-[/bold]",
         f"[bold]${total_usd_proceeds:,.2f}[/bold]",
         f"[bold]₹{total_inr_proceeds:,.0f}[/bold]",
+        f"[bold]${total_sale_expenses_usd:,.2f}[/bold]",
         f"[bold][{total_gain_color_usd}]${total_capital_gains_usd:,.2f}[/{total_gain_color_usd}][/bold]",
         f"[bold][{total_gain_color_inr}]₹{total_capital_gains_inr:,.0f}[/{total_gain_color_inr}][/bold]",
         "[bold]-[/bold]",
@@ -1280,17 +1241,21 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
         'total_proceeds_usd': 0,
         'total_proceeds_inr': 0,
         'exchange_rate': 0,
+        'tax_exchange_rate': 0,
         'transaction_count': 0
     })
 
     for sale in sale_events:
         date_key = sale.sale_date
         date_proceedings[date_key]['total_shares'] += sale.quantity_sold
-        date_proceedings[date_key]['total_proceeds_usd'] += sale.sale_price_usd * sale.quantity_sold
+        date_proceedings[date_key]['total_proceeds_usd'] += sale.sale_proceeds_usd
         date_proceedings[date_key]['total_proceeds_inr'] += (
             sale.sale_proceeds_usd * sale.exchange_rate_sale
         )
         date_proceedings[date_key]['exchange_rate'] = sale.exchange_rate_sale  # Use the last rate for the date
+        date_proceedings[date_key]['tax_exchange_rate'] = (
+            sale.capital_gains_exchange_rate or sale.exchange_rate_sale
+        )
         date_proceedings[date_key]['transaction_count'] += 1
 
     # Use bank transactions passed from calling function (loaded earlier to avoid logs in middle of tables)
@@ -1316,8 +1281,8 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
     proceedings_table.add_column("Exchange GST", style="red", justify="right", width=9, overflow="ellipsis")
     proceedings_table.add_column("Final Rcvd (INR)", style="green", justify="right", width=10, overflow="ellipsis")
     proceedings_table.add_column("Net Diff (INR)", justify="right", width=10, overflow="ellipsis")
-    proceedings_table.add_column("Transfer Exp (USD)", style="red", justify="right", width=10, overflow="ellipsis")
-    proceedings_table.add_column("Transfer Exp (INR)", style="red", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Sale Exp (USD)", style="red", justify="right", width=10, overflow="ellipsis")
+    proceedings_table.add_column("Sale Exp (Tax INR)", style="red", justify="right", width=10, overflow="ellipsis")
     proceedings_table.add_column("FX Gain/Loss", style="magenta", justify="right", width=9, overflow="ellipsis")
     proceedings_table.add_column("Status", style="yellow", width=6, overflow="ellipsis")
 
@@ -1354,7 +1319,8 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             bank_rate = bank_data.get('bank_exchange_rate', 0)
             inr_before_gst = bank_data.get('inr_before_gst', 0)
             gst_amount = bank_data.get('gst_amount', 0)
-            inr_after_gst = bank_data.get('inr_after_gst', 0)
+            calculated_inr_after_gst = bank_data.get('inr_after_gst', 0)
+            actual_received = bank_data.get('actual_received', calculated_inr_after_gst)
             
             # =================================================================================
             # FINANCIAL FORMULAS FOR RSU BROKER PROCEEDINGS RECONCILIATION
@@ -1364,14 +1330,16 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             # Purpose: Calculate the USD amount lost due to brokerage/transfer costs
             # Formula: Transfer_Expense_USD = Expected_USD - Bank_Received_USD
             # Example: $6,238.87 - $6,213.87 = $25.00
-            transfer_expense_usd = usd_proceeds - bank_usd
+            transfer_expense_usd = bank_data.get(
+                'sale_expense_usd', usd_proceeds - bank_usd
+            )
             
             # FORMULA 2: Transfer Expense (INR) 
-            # Purpose: Convert USD transfer expense to INR using bank's exchange rate
-            # Formula: Transfer_Expense_INR = Transfer_Expense_USD × Bank_Exchange_Rate
-            # Example: $25.00 × ₹87.04 = ₹2,176
-            # Note: Uses bank rate (not expected rate) because this is the actual cost
-            transfer_expense_inr = transfer_expense_usd * bank_rate
+            # Purpose: Convert the deductible selling expense for capital-gain tax.
+            # Rule 115 uses the prescribed prior month-end rate, not the bank rate.
+            transfer_expense_inr = (
+                transfer_expense_usd * data['tax_exchange_rate']
+            )
             
             # FORMULA 3: Exchange Rate Gain/Loss (INR)
             # Purpose: Calculate impact of exchange rate differences on actual bank proceeds
@@ -1405,13 +1373,13 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             # Negative = Loss (received less than expected, e.g., transfer charges, GST, poor rates)
             # This captures the total impact of transfer charges, GST, and exchange rate differences
             # Note: This is for ITR filing reference only and does not affect capital gains calculations
-            net_difference_inr = inr_after_gst - expected_inr
+            net_difference_inr = actual_received - expected_inr
             
             # Update totals
             total_bank_usd += bank_usd
             total_inr_before_gst += inr_before_gst
             total_gst += gst_amount
-            total_inr_after_gst += inr_after_gst
+            total_inr_after_gst += actual_received
             total_net_difference_inr += net_difference_inr
             total_transfer_expense_usd += transfer_expense_usd
             total_transfer_expense_inr += transfer_expense_inr
@@ -1424,7 +1392,7 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             bank_rate_text = f"₹{bank_rate:.4f}"
             bank_inr_text = f"₹{inr_before_gst:,.0f}"
             gst_text = f"₹{gst_amount:,.0f}"
-            final_inr_text = f"₹{inr_after_gst:,.0f}"
+            final_inr_text = f"₹{actual_received:,.2f}"
             
             # Color-code net difference: green for gain, red for loss
             net_diff_color = "green" if net_difference_inr >= 0 else "red"
@@ -1500,7 +1468,7 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             console.print(f"   [green]Net Difference (Final - Expected): +₹{total_net_difference_inr:,.0f} GAIN[/green]")
         else:
             console.print(f"   [red]Net Difference (Final - Expected): ₹{total_net_difference_inr:,.0f} LOSS[/red]")
-        console.print(f"   Transfer Expense: ${total_transfer_expense_usd:,.2f} (USD) | ₹{total_transfer_expense_inr:,.0f} (INR)")
+        console.print(f"   Deductible Sale Expense: ${total_transfer_expense_usd:,.2f} (USD) | ₹{total_transfer_expense_inr:,.2f} (Rule 115 INR)")
         console.print(f"   Exchange Rate Gain/Loss: ₹{total_exchange_rate_gain_loss:,.0f}")
         
         if total_expected_inr > 0:
@@ -1511,14 +1479,14 @@ def _display_sale_date_proceedings_table(sale_events, console, bank_transactions
             
             console.print(f"\n[cyan]📊 Cost Breakdown:[/cyan]")
             console.print(f"   Exchange GST Rate: {gst_percentage:.2f}% (of bank amount)")
-            console.print(f"   Transfer Expense Cost (USD): {transfer_percentage_usd:.2f}% of expected USD")
-            console.print(f"   Transfer Expense Cost (INR): {transfer_percentage_inr:.2f}% of expected INR")
+            console.print(f"   Sale Expense Cost (USD): {transfer_percentage_usd:.2f}% of expected USD")
+            console.print(f"   Sale Expense Cost (Tax INR): {transfer_percentage_inr:.2f}% of expected INR")
             console.print(f"   Net Efficiency: {net_efficiency:.1f}% (received vs expected)")
     else:
         console.print(f"\n[yellow]⚠️ No bank transactions found - add bank statements to see detailed breakdown[/yellow]")
     
     console.print(f"\n[dim]💡 This table shows a compact overview - full detailed breakdown available in Excel report[/dim]")
-    console.print(f"[dim]📋 Net Difference column shows gain/loss vs expected amounts: Green=Gain, Red=Loss - useful for ITR filing[/dim]")
+    console.print(f"[dim]📋 Capital gain deducts the confirmed sale expense; GST, FX spread, and bank rounding remain reconciliation-only.[/dim]")
 
 
 def _display_company_and_account_details(console) -> None:

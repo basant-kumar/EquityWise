@@ -167,7 +167,8 @@ class ExcelReporter:
             ["", "Sale Details", "USD Amount", "INR Amount"],
             ["", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
             ["", "Total Purchase Amount", f"${summary.total_cost_basis_usd:,.2f}", f"₹{summary.total_cost_basis_inr:,.2f}"],
-            ["", "Total Sold Amount", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
+            ["", "Gross Sale Proceeds", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
+            ["", "Deductible Sale Expenses", f"${summary.total_sale_expenses_usd:,.2f}", f"₹{summary.total_sale_expenses_inr:,.2f}"],
             ["", "", "", ""],
             ["", "Total Capital Gains", f"${summary.total_capital_gains_usd:,.2f}", f"₹{summary.total_capital_gains_inr:,.2f}"],
             ["", "Short-term Gains", f"${summary.short_term_gains_usd:,.2f}", f"₹{summary.short_term_gains_inr:,.2f}"],
@@ -307,18 +308,22 @@ class ExcelReporter:
                 'Sale Proceeds (INR)': event.sale_proceeds_inr,
                 'Cost Basis (USD)': event.cost_basis_usd,
                 'Cost Basis (INR)': event.cost_basis_inr,
-                'Capital Gain (USD)': event.capital_gain_usd,
-                'Capital Gain (INR)': event.capital_gain_inr,
+                'Net Capital Gain (USD)': event.capital_gain_usd,
+                'Net Capital Gain (INR)': event.capital_gain_inr,
                 'Holding Period': f"{event.holding_period_days} days",
                 'Gain Type': event.gain_type,
                 'Financial Year': event.financial_year,
-                'Sale-Date Exchange Rate': event.exchange_rate_sale
+                'Sale-Date Exchange Rate': event.exchange_rate_sale,
+                'Gross Capital Gain (USD)': event.gross_capital_gain_usd,
+                'Gross Capital Gain (INR)': event.gross_capital_gain_inr,
+                'Deductible Sale Expense (USD)': event.sale_expense_usd,
+                'Deductible Sale Expense (INR)': event.sale_expense_inr,
             })
         
         df = pd.DataFrame(sale_data)
         
         # Add title
-        ws.merge_cells('A1:O1')
+        ws.merge_cells('A1:T1')
         title_cell = ws['A1']
         title_cell.value = "RSU Sale Events"
         title_cell.font = Font(bold=True, size=14, color="FFFFFF")
@@ -357,6 +362,10 @@ class ExcelReporter:
                     elif c_idx == 11:  # Capital Gain (USD)
                         cell.number_format = '"$"#,##0.00'
                     elif c_idx == 12:  # Capital Gain (INR)
+                        cell.number_format = '"₹"#,##0.00'
+                    elif c_idx in (17, 19):
+                        cell.number_format = '"$"#,##0.00'
+                    elif c_idx in (18, 20):
                         cell.number_format = '"₹"#,##0.00'
                 
                 cell.border = self.border
@@ -421,12 +430,24 @@ class ExcelReporter:
             gain_inr_cell.number_format = '"₹"#,##0.00'
             gain_inr_cell.border = self.border
             
-            # Add dashes for remaining columns (13-15: Holding Period, Gain Type, Financial Year)
-            for col in range(13, 16):
+            # Add dashes for non-total columns (holding/type/FY/sale-date rate).
+            for col in range(13, 17):
                 cell = ws.cell(row=total_row, column=col, value="-")
                 cell.font = Font(bold=True)
                 cell.border = self.border
                 cell.alignment = Alignment(horizontal="center")
+
+            extra_totals = {
+                17: sum(event.gross_capital_gain_usd for event in sale_events),
+                18: sum(event.gross_capital_gain_inr for event in sale_events),
+                19: sum(event.sale_expense_usd for event in sale_events),
+                20: sum(event.sale_expense_inr for event in sale_events),
+            }
+            for col, value in extra_totals.items():
+                cell = ws.cell(row=total_row, column=col, value=value)
+                cell.font = Font(bold=True)
+                cell.number_format = '"$"#,##0.00' if col in (17, 19) else '"₹"#,##0.00'
+                cell.border = self.border
         
         # Auto-adjust column widths with improved calculation
         self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
@@ -448,14 +469,16 @@ class ExcelReporter:
             total_usd = sum(event.sale_proceeds_usd for event in events)
             
             # Find matching bank transaction
-            bank_match = None
-            for tx in bank_transactions:
-                if abs((tx['bank_date'] - sale_date).days) <= 7:  # Within 7 days
-                    bank_match = tx
-                    break
+            bank_match = next(
+                (
+                    tx for tx in bank_transactions
+                    if tx.get('sale_date') == sale_date
+                ),
+                None,
+            )
             
             expected_inr = total_usd * events[0].exchange_rate_sale
-            bank_received_inr = bank_match.get('inr_after_gst', 0) if bank_match else 0
+            bank_received_inr = bank_match.get('actual_received', 0) if bank_match else 0
             # Net Difference: Final Received - Expected (positive=gain, negative=loss)
             net_difference = bank_received_inr - expected_inr if bank_match else 0
             
@@ -463,10 +486,10 @@ class ExcelReporter:
                 'Sale Date': sale_date.strftime('%d/%m/%Y'),
                 'Expected USD': f"${total_usd:.2f}",
                 'Expected INR': f"₹{expected_inr:.2f}",
-                'Bank Received USD': f"${bank_match.get('usd_amount', 0):.2f}" if bank_match else "Not Found",
+                'Bank Received USD': f"${bank_match.get('bank_usd_amount', 0):.2f}" if bank_match else "Not Found",
                 'Bank Received INR': f"₹{bank_received_inr:.2f}" if bank_match else "Not Found",
                 'Net Difference INR': f"₹{net_difference:.2f}" if bank_match else "N/A",
-                'Transfer Expense': f"${total_usd - bank_match.get('usd_amount', 0):.2f}" if bank_match else "N/A",
+                'Deductible Sale Expense': f"${bank_match.get('sale_expense_usd', 0):.2f}" if bank_match else "N/A",
                 'Exchange Rate Diff': f"₹{bank_match.get('exchange_rate_gain_loss', 0):.2f}" if bank_match else "N/A"
             })
         

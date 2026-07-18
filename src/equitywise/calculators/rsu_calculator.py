@@ -2,7 +2,7 @@
 
 from datetime import date as Date, datetime, timedelta
 from typing import List, Dict, Optional, Tuple, Any
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from collections import defaultdict
 
 from loguru import logger
@@ -77,6 +77,10 @@ class SaleEvent(BaseModel):
     vest_exchange_rate: float = 0.0  # Exchange rate when originally vested
     vest_fmv_inr: float = 0.0  # Original FMV per share when vested (INR)
     financial_year: str  # Indian FY of sale
+    gross_capital_gain_usd: float = 0.0  # Gain/loss before selling expenses
+    gross_capital_gain_inr: float = 0.0
+    sale_expense_usd: float = 0.0  # Section 48 expense not included in broker G&L
+    sale_expense_inr: float = 0.0  # Converted with the sale's Rule 115 rate
     
     @property
     def holding_period_days(self) -> int:
@@ -116,6 +120,8 @@ class RSUCalculationSummary(BaseModel):
     total_sale_proceeds_inr: float = 0.0
     total_cost_basis_usd: float = 0.0
     total_cost_basis_inr: float = 0.0
+    total_sale_expenses_usd: float = 0.0
+    total_sale_expenses_inr: float = 0.0
     
     # Capital Gains
     short_term_gains_usd: float = 0.0
@@ -573,6 +579,8 @@ class RSUCalculator:
                     cost_basis_inr=cost_basis_inr,
                     capital_gain_usd=capital_gain_usd,
                     capital_gain_inr=capital_gain_inr,
+                    gross_capital_gain_usd=capital_gain_usd,
+                    gross_capital_gain_inr=capital_gain_inr,
                     gain_type=gain_type,
                     exchange_rate_sale=sale_exchange_rate,
                     capital_gains_exchange_rate=capital_gains_exchange_rate,
@@ -593,6 +601,92 @@ class RSUCalculator:
         
         logger.info(f"Successfully processed {len(sale_events)} sale events")
         return sale_events
+
+    def apply_sale_expenses(
+        self,
+        sale_events: List[SaleEvent],
+        expenses_by_sale_date: Dict[Date, float],
+    ) -> None:
+        """Deduct selling expenses omitted from the broker G&L statement.
+
+        Bank statements provide one net USD remittance per sale date, while a
+        G&L statement can contain several tax lots for that date. The expense
+        is therefore allocated across those lots in proportion to gross sale
+        proceeds. Whole cents are distributed by largest remainder so the
+        allocated expense always equals the bank-supported total exactly.
+        """
+        events_by_date: Dict[Date, List[SaleEvent]] = defaultdict(list)
+        for event in sale_events:
+            events_by_date[event.sale_date].append(event)
+
+        cents = Decimal("0.01")
+        for sale_date, expense_value in expenses_by_sale_date.items():
+            date_events = events_by_date.get(sale_date, [])
+            expense_usd = Decimal(str(expense_value)).quantize(
+                cents, rounding=ROUND_HALF_UP
+            )
+            if not date_events or expense_usd <= 0:
+                continue
+
+            gross_proceeds = sum(
+                Decimal(str(event.sale_proceeds_usd)) for event in date_events
+            )
+            if gross_proceeds <= 0:
+                logger.warning(
+                    f"Cannot allocate ${expense_usd:.2f} sale expense for "
+                    f"{sale_date}: gross proceeds are zero"
+                )
+                continue
+
+            # Allocate whole cents using the largest-remainder method. This
+            # avoids a negative final-lot allocation when many small lots share
+            # a low fee, while preserving the exact bank-supported total.
+            expense_cents = int(expense_usd * 100)
+            raw_allocations = [
+                Decimal(expense_cents)
+                * Decimal(str(event.sale_proceeds_usd))
+                / gross_proceeds
+                for event in date_events
+            ]
+            allocated_cents = [
+                int(value.to_integral_value(rounding=ROUND_DOWN))
+                for value in raw_allocations
+            ]
+            cents_left = expense_cents - sum(allocated_cents)
+            remainder_order = sorted(
+                range(len(date_events)),
+                key=lambda index: raw_allocations[index] - allocated_cents[index],
+                reverse=True,
+            )
+            for index in remainder_order[:cents_left]:
+                allocated_cents[index] += 1
+
+            for event, allocation_cents in zip(date_events, allocated_cents):
+                allocated_expense = Decimal(allocation_cents) / 100
+
+                rule_115_rate = Decimal(
+                    str(event.capital_gains_exchange_rate or event.exchange_rate_sale)
+                )
+                expense_inr = allocated_expense * rule_115_rate
+
+                # Preserve the broker's gross G&L and make repeated application
+                # replace the prior allocation instead of deducting it twice.
+                if event.sale_expense_usd == 0:
+                    event.gross_capital_gain_usd = event.capital_gain_usd
+                    event.gross_capital_gain_inr = event.capital_gain_inr
+                event.sale_expense_usd = float(allocated_expense)
+                event.sale_expense_inr = float(expense_inr)
+                event.capital_gain_usd = (
+                    event.gross_capital_gain_usd - event.sale_expense_usd
+                )
+                event.capital_gain_inr = (
+                    event.gross_capital_gain_inr - event.sale_expense_inr
+                )
+
+            logger.info(
+                f"Deducted ${expense_usd:.2f} selling expense from "
+                f"{len(date_events)} sale lots dated {sale_date}"
+            )
     
     def calculate_fy_summary(
         self, 
@@ -624,6 +718,8 @@ class RSUCalculator:
             summary.total_sale_proceeds_inr += sale.sale_proceeds_inr
             summary.total_cost_basis_usd += sale.cost_basis_usd
             summary.total_cost_basis_inr += sale.cost_basis_inr
+            summary.total_sale_expenses_usd += sale.sale_expense_usd
+            summary.total_sale_expenses_inr += sale.sale_expense_inr
             summary.total_capital_gains_usd += sale.capital_gain_usd
             summary.total_capital_gains_inr += sale.capital_gain_inr
             

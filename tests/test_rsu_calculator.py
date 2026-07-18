@@ -193,6 +193,65 @@ class TestRSUCalculator:
         assert event.gain_type == "Short-term"  # 4 months holding period
         assert event.financial_year == "FY24-25"
 
+    def test_sale_expense_is_allocated_and_deducted_once(self, rsu_calculator):
+        """A bank-supported selling fee reduces G&L gain using Rule 115."""
+        common = {
+            "sale_date": date(2024, 10, 15),
+            "acquisition_date": date(2024, 6, 15),
+            "grant_date": date(2023, 6, 15),
+            "grant_number": "RU123456",
+            "symbol": "ADBE",
+            "sale_price_usd": 10.0,
+            "cost_basis_usd": 0.0,
+            "cost_basis_inr": 0.0,
+            "gain_type": "Short-term",
+            "exchange_rate_sale": 81.0,
+            "capital_gains_exchange_rate": 80.0,
+            "financial_year": "FY24-25",
+        }
+        sales = [
+            SaleEvent(
+                **common,
+                order_number="ORDER-1",
+                quantity_sold=60.0,
+                sale_proceeds_usd=600.0,
+                sale_proceeds_inr=48000.0,
+                capital_gain_usd=100.0,
+                capital_gain_inr=8000.0,
+            ),
+            SaleEvent(
+                **common,
+                order_number="ORDER-2",
+                quantity_sold=40.0,
+                sale_proceeds_usd=400.0,
+                sale_proceeds_inr=32000.0,
+                capital_gain_usd=-50.0,
+                capital_gain_inr=-4000.0,
+            ),
+        ]
+
+        rsu_calculator.apply_sale_expenses(
+            sales, {date(2024, 10, 15): 25.0}
+        )
+
+        assert [sale.sale_expense_usd for sale in sales] == [15.0, 10.0]
+        assert [sale.sale_expense_inr for sale in sales] == [1200.0, 800.0]
+        assert [sale.capital_gain_usd for sale in sales] == [85.0, -60.0]
+        assert [sale.capital_gain_inr for sale in sales] == [6800.0, -4800.0]
+
+        # Reapplying the same source data must not deduct the expense twice.
+        rsu_calculator.apply_sale_expenses(
+            sales, {date(2024, 10, 15): 25.0}
+        )
+        assert [sale.capital_gain_usd for sale in sales] == [85.0, -60.0]
+        assert [sale.capital_gain_inr for sale in sales] == [6800.0, -4800.0]
+
+        summary = rsu_calculator.calculate_fy_summary("FY24-25", [], sales)
+        assert summary.total_sale_expenses_usd == 25.0
+        assert summary.total_sale_expenses_inr == 2000.0
+        assert summary.total_capital_gains_usd == 25.0
+        assert summary.total_capital_gains_inr == 2000.0
+
     def test_calculate_fy_summary(self, rsu_calculator):
         """Test financial year summary calculation."""
         # Create sample events
