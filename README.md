@@ -62,18 +62,29 @@ archive.
 
 Choose one of these values:
 
-| Value | When to use it |
+| Configuration value | What it does |
 | --- | --- |
 | `inr-components` | **Default and recommended.** Converts sale proceeds and acquisition cost to INR separately using their applicable Rule 115 SBI TTBR dates, then calculates the gain/loss in INR. Use this unless your tax adviser directs otherwise. |
 | `usd-gain-conversion` | Legacy compatibility. Calculates the gain/loss in USD first and converts that single result using the sale Rule 115 SBI TTBR. Use this only to reproduce older EquityWise reports or when specifically advised. |
 
-The default `inr-components` formula is applied to each sale lot:
+### `inr-components` formula (default)
 
 ```text
-Sale proceeds (USD) × sale Rule 115 SBI TTBR
-− Acquisition cost (USD) × acquisition Rule 115 SBI TTBR
-− Selling expense (USD) × sale Rule 115 SBI TTBR
-= Capital gain or loss (INR)
+Sale proceeds INR = Gross proceeds USD × sale Rule 115 SBI TTBR
+Acquisition cost INR = Adjusted cost basis USD × acquisition Rule 115 SBI TTBR
+Selling expense INR = Selling expense USD × sale Rule 115 SBI TTBR
+
+Capital gain/loss INR
+  = Sale proceeds INR − Acquisition cost INR − Selling expense INR
+```
+
+### `usd-gain-conversion` formula (legacy)
+
+```text
+Net gain/loss USD
+  = Gross proceeds USD − Adjusted cost basis USD − Selling expense USD
+
+Capital gain/loss INR = Net gain/loss USD × sale Rule 115 SBI TTBR
 ```
 
 The default needs no option. To select a method for one run, place the global
@@ -84,10 +95,16 @@ uv run equitywise --capital-gains-method inr-components generate-reports --finan
 uv run equitywise --capital-gains-method usd-gain-conversion generate-reports --financial-year FY25-26
 ```
 
-To configure every run, add one allowed value to `.env`:
+To configure every run, put exactly one of these values in `.env`:
 
 ```dotenv
 RSU_FA_CAPITAL_GAINS_CALCULATION_METHOD=inr-components
+```
+
+or:
+
+```dotenv
+RSU_FA_CAPITAL_GAINS_CALCULATION_METHOD=usd-gain-conversion
 ```
 
 Bank INR credits are used for reconciliation, not as the Rule 115 conversion
