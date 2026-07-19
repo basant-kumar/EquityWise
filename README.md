@@ -9,7 +9,7 @@ filing from E*Trade, Excelity, bank, stock-price, and exchange-rate data.
 ## Features
 
 - RSU and ESPP vesting-income calculations
-- INR-first capital gain/loss calculations by sale lot
+- Configurable foreign-asset capital gain/loss calculations by sale lot
 - Foreign Assets reporting for the corresponding calendar year
 - PDF and Excel RSU statement support
 - Bank reconciliation and deductible selling-expense handling
@@ -49,19 +49,51 @@ Never commit files under `data/user_data/`; they contain sensitive financial
 information. See the [data setup guide](data/README.md) for filenames and source
 instructions.
 
-## Capital gain formula
+Refresh both public reference datasets with one command:
 
-Each sale lot is calculated directly in INR:
+```bash
+uv run python scripts/update_reference_data.py
+```
+
+This adds missing ADBE trading days and refreshes the complete SBI USD TT BUY
+archive.
+
+## Capital gains
+
+Choose one of these values:
+
+| Value | When to use it |
+| --- | --- |
+| `inr-components` | **Default and recommended.** Converts sale proceeds and acquisition cost to INR separately using their applicable Rule 115 SBI TTBR dates, then calculates the gain/loss in INR. Use this unless your tax adviser directs otherwise. |
+| `usd-gain-conversion` | Legacy compatibility. Calculates the gain/loss in USD first and converts that single result using the sale Rule 115 SBI TTBR. Use this only to reproduce older EquityWise reports or when specifically advised. |
+
+The default `inr-components` formula is applied to each sale lot:
 
 ```text
-Sale proceeds (USD) × sale-date exchange rate
-− Acquisition cost (USD) × vest-date exchange rate
-− Selling expense (USD) × sale-date exchange rate
+Sale proceeds (USD) × sale Rule 115 SBI TTBR
+− Acquisition cost (USD) × acquisition Rule 115 SBI TTBR
+− Selling expense (USD) × sale Rule 115 SBI TTBR
 = Capital gain or loss (INR)
 ```
 
-The broker's USD gain/loss is retained for reconciliation but does not determine
-the INR capital gain/loss.
+The default needs no option. To select a method for one run, place the global
+option before `generate-reports`:
+
+```bash
+uv run equitywise --capital-gains-method inr-components generate-reports --financial-year FY25-26
+uv run equitywise --capital-gains-method usd-gain-conversion generate-reports --financial-year FY25-26
+```
+
+To configure every run, add one allowed value to `.env`:
+
+```dotenv
+RSU_FA_CAPITAL_GAINS_CALCULATION_METHOD=inr-components
+```
+
+Bank INR credits are used for reconciliation, not as the Rule 115 conversion
+rate. A bank-supported USD selling expense is deducted and converted using the
+sale SBI TTBR. See [capital-gain calculations](docs/CAPITAL_GAINS.md) for the
+complete formulas, TTBR date selection, and bank-rate treatment.
 
 ## Documentation
 

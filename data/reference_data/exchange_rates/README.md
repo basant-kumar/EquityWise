@@ -1,51 +1,20 @@
-# Exchange Rates Folder
+# SBI TT buying rates
 
-Place **USD-INR exchange rate data** here for accurate currency conversions.
+`SBI_REFERENCE_RATES_USD.csv` contains historical USD/INR `TT BUY` values and a
+link to the archived SBI rate-card PDF for each observation. Data is mirrored
+from the MIT-licensed
+[SBI FX RateKeeper](https://github.com/sahilgupta/sbi-fx-ratekeeper) project,
+which archives SBI-published rate cards.
 
-## 📄 Required Files
-- **`Exchange_Reference_Rates.csv`** - Historical USD-INR exchange rates
+Do not substitute FBIL, RBI, generic market, or bank conversion rates in this
+file and label them SBI TTBR. The bank's actual conversion rate belongs in the
+bank statement and is handled separately during reconciliation.
 
-## 📊 CSV Format
-```csv
-Date,Currency,Rate
-2024-01-01,USD,83.2500
-2024-01-02,USD,83.3200
-2024-01-03,USD,83.1800
-```
+Refresh the archive and stock data from the project root:
 
-## 🔄 Data Sources
-### Recommended Sources:
-- **SBI TTBR Rates** - Reserve Bank of India reference rates
-- **RBI Reference Rates** - Official central bank rates
-- **xe.com** - Reliable commercial rates
-- **Bank rates** - For specific transaction validation
-
-### API Sources:
-- **exchangerate-api.com** - Free API with historical data
-- **fixer.io** - Professional exchange rate API
-- **Alpha Vantage** - Financial data with forex rates
-
-## 📅 Required Date Range
-Ensure your exchange rate data covers:
-- **First RSU vesting date** → **Present day**
-- All periods when you had Foreign Asset holdings
-- All RSU transaction periods
-
-## 🎯 Usage
-Exchange rates are used for:
-- **RSU vesting calculations** - Convert USD FMV to INR
-- **Sale proceeds** - Convert USD sales to INR equivalents  
-- **Foreign Assets reporting** - Monthly balance calculations
-- **Tax compliance** - Accurate INR valuations
-
-## 🔄 Updating Data
-
-### Automated (Recommended):
 ```bash
-# From the project root
-.venv/bin/python scripts/update_reference_data.py
+uv run python scripts/update_reference_data.py
 ```
-This fetches missing USD-INR rates from the free fawazahmed0/currency-api and prepends them to the existing CSV.
 
----
-💡 **Tip**: Keep this data updated regularly. Missing exchange rates will cause calculation errors or require manual fallback rates!
+SBI does not publish every calendar day. EquityWise uses its limited
+nearby-date fallback when the required day is a weekend or bank holiday.

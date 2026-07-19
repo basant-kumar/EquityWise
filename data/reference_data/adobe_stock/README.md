@@ -42,9 +42,10 @@ Stock prices are used for:
 ### Automated (Recommended):
 ```bash
 # From the project root
-.venv/bin/python scripts/update_reference_data.py
+uv run python scripts/update_reference_data.py
 ```
-This fetches missing ADBE prices from Yahoo Finance and prepends them to the existing CSV, preserving the original format.
+This fetches missing ADBE prices from Yahoo Finance and refreshes the complete
+SBI TTBR archive in the same run.
 
 ### Manual Download:
 1. Go to **Yahoo Finance** → Search "ADBE"

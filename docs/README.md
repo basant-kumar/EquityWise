@@ -140,28 +140,27 @@ vesting income. RSU vesting income is reported separately from capital gains.
 
 ### Capital gains
 
-Capital gain/loss is calculated per sale lot from separately converted INR
-components:
+The calculation method is configurable. The default is `inr-components`:
 
 ```text
-Sale proceeds INR = sale proceeds USD × sale-date exchange rate
-Acquisition cost INR = adjusted cost basis USD × vest-date exchange rate
-Selling expense INR = selling expense USD × sale-date exchange rate
+Sale proceeds INR = sale proceeds USD × sale Rule 115 SBI TTBR
+Acquisition cost INR = adjusted cost basis USD × acquisition Rule 115 SBI TTBR
+Selling expense INR = selling expense USD × sale Rule 115 SBI TTBR
 
 Capital gain/loss INR
   = Sale proceeds INR − Acquisition cost INR − Selling expense INR
 ```
 
-The adjusted USD gain/loss supplied by the broker remains visible for
-reconciliation. It is not converted as a single amount to calculate the INR
-gain/loss.
+See [Capital-gain calculations](CAPITAL_GAINS.md) for the alternative
+`usd-gain-conversion` method and configuration instructions.
 
 ### Bank reconciliation
 
-Actual bank credits remain visible alongside calculated proceeds. Confirmed
-selling expenses reduce capital gains. GST, bank FX spread, and line-level bank
-rounding are reconciliation items unless separately supported as deductible
-expenses.
+The bank's rate converts the post-selling-expense USD remittance into the actual
+INR credit. It is used for reconciliation, not as the Rule 115 tax rate.
+Confirmed selling expenses reduce capital gains. GST, bank FX spread, and
+line-level bank rounding remain reconciliation items unless separately
+supported as deductible expenses.
 
 ## Report output
 
@@ -173,8 +172,8 @@ Reports are written to `output/`:
 - Multi-sheet Foreign Assets Excel workbook
 - Validation report when RSU validation is requested
 
-Detailed sale reports show sale-date and vest-date exchange rates, gross and net
-gains, and allocated selling expenses.
+Detailed sale reports show the SBI TTBRs, selected calculation method, gross and
+net gains, and allocated selling expenses.
 
 ## Troubleshooting
 

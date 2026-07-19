@@ -240,10 +240,24 @@ class SBIRatesLoader(DataLoader):
     """Loader for SBI TTBR rates CSV file."""
     
     def _load_file(self) -> pd.DataFrame:
-        """Load SBI rates CSV file."""
+        """Load the canonical SBI archive or the legacy normalized schema."""
         try:
-            # Skip the first 2 header lines (Financial Benchmarks India Pvt Ltd, Reference Rates)
-            df = pd.read_csv(self.file_path, skiprows=2)
+            with self.file_path.open(encoding="utf-8-sig") as source:
+                first_line = source.readline().strip().upper()
+
+            if first_line.startswith("DATE,PDF FILE,TT BUY"):
+                source_df = pd.read_csv(self.file_path)
+                observed_at = pd.to_datetime(source_df["DATE"], errors="coerce")
+                df = pd.DataFrame({
+                    "Date": observed_at,
+                    "Time": observed_at.dt.strftime("%H:%M"),
+                    "Currency Pairs": "USD/INR",
+                    "Rate": source_df["TT BUY"],
+                    "Comments": source_df["PDF FILE"],
+                })
+            else:
+                # Backward compatibility for the former three-line format.
+                df = pd.read_csv(self.file_path, skiprows=2)
             
             logger.info(f"SBI rates file has {len(df)} rows and {len(df.columns)} columns")
             logger.debug(f"Columns: {list(df.columns)}")
@@ -261,14 +275,19 @@ class SBIRatesLoader(DataLoader):
         # Remove any empty rows
         df_cleaned = df.dropna(how='all').copy()
         
-        # Convert Date column
-        df_cleaned['Date'] = pd.to_datetime(df_cleaned['Date'], format='%d %b %Y', errors='coerce')
+        # Convert Date column. Canonical data is ISO; the old file used
+        # ``DD Mon YYYY``.
+        df_cleaned['Date'] = pd.to_datetime(df_cleaned['Date'], errors='coerce')
         
         # Convert Rate column to numeric
         df_cleaned['Rate'] = pd.to_numeric(df_cleaned['Rate'], errors='coerce')
         
         # Filter for USD rates only (most relevant for RSU calculations)
-        usd_rates = df_cleaned[df_cleaned['Currency Pairs'].str.contains('USD', na=False)].copy()
+        usd_rates = df_cleaned[
+            df_cleaned['Currency Pairs'].str.contains('USD', na=False)
+            & (df_cleaned['Rate'] > 0)
+            & df_cleaned['Date'].notna()
+        ].copy()
         
         logger.info(f"Cleaned SBI rates: {len(usd_rates)} USD rate records from {len(df)} total")
         

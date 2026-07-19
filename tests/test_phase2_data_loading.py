@@ -93,6 +93,14 @@ class TestDataLoaders:
         # Check for USD rates
         usd_records = [r for r in records if 'USD' in r.currency_pair]
         assert len(usd_records) > 0
+
+        # Known values from the archived SBI reference-rate cards used by
+        # FY25-26 sales. This guards against relabeling FBIL/market rates as
+        # SBI TTBR again.
+        rates_by_date = {record.date: record.rate for record in usd_records}
+        assert settings.sbi_ttbr_rates_path.name == "SBI_REFERENCE_RATES_USD.csv"
+        assert rates_by_date[date(2025, 4, 30)] == 84.25
+        assert rates_by_date[date(2025, 9, 30)] == 88.35
         
         print(f"✓ SBI rates loaded: {len(records)} validated records ({len(usd_records)} USD rates)")
     

@@ -286,14 +286,15 @@ class SBIRateRecord(BaseModel):
     @field_validator('date', mode='before')
     @classmethod
     def parse_date(cls, v):
+        if isinstance(v, datetime):
+            return v.date()
         if isinstance(v, str):
-            try:
-                return datetime.strptime(v, "%d %b %Y").date()
-            except ValueError:
+            for date_format in ("%d %b %Y", "%m/%d/%Y", "%Y-%m-%d %H:%M"):
                 try:
-                    return datetime.strptime(v, "%m/%d/%Y").date()
+                    return datetime.strptime(v, date_format).date()
                 except ValueError:
-                    return None
+                    continue
+            return None
         return v
     
     @field_validator('rate', mode='after')

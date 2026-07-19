@@ -23,6 +23,12 @@ def sample_sbi_rates() -> List[SBIRateRecord]:
             'Rate': 83.25
         }),
         SBIRateRecord(**{
+            'Date': date(2024, 5, 31),
+            'Time': '1:00:00 PM',
+            'Currency Pairs': 'INR / 1 USD',
+            'Rate': 83.40
+        }),
+        SBIRateRecord(**{
             'Date': date(2024, 6, 15),
             'Time': '1:00:00 PM', 
             'Currency Pairs': 'INR / 1 USD',
@@ -85,7 +91,7 @@ class TestRSUCalculator:
 
     def test_initialization(self, rsu_calculator):
         """Test calculator initialization."""
-        assert len(rsu_calculator.sbi_rates) == 4
+        assert len(rsu_calculator.sbi_rates) == 5
         assert len(rsu_calculator.stock_data) == 3
 
     def test_get_exchange_rate(self, rsu_calculator):
@@ -109,7 +115,7 @@ class TestRSUCalculator:
         assert price is None
 
     def test_get_capital_gains_exchange_rate(self, rsu_calculator):
-        """Capital gains use the prior month-end Rule 115 rate."""
+        """The prior month-end Rule 115 reference rate remains available."""
         rate = rsu_calculator.get_capital_gains_exchange_rate(date(2024, 10, 15))
         assert rate == 83.90
 
@@ -187,14 +193,51 @@ class TestRSUCalculator:
         assert event.sale_proceeds_usd == 27500.0
         assert event.cost_basis_usd == 26250.0
         assert event.capital_gain_usd == 1250.0  # $27,500 - $26,250
-        assert event.exchange_rate_sale == 84.00
+        assert event.exchange_rate_sale == 83.90
         assert event.capital_gains_exchange_rate == 83.90
-        assert event.capital_gain_inr == 1250.0 * 83.90
+        assert event.vest_exchange_rate == 83.50
+        assert event.acquisition_exchange_rate == 83.40
+        assert event.cost_basis_exchange_rate == 83.40
+        assert event.calculation_method == "inr-components"
+        assert event.sale_proceeds_inr == 27500.0 * 83.90
+        assert event.cost_basis_inr == 26250.0 * 83.40
+        assert event.capital_gain_inr == (
+            event.sale_proceeds_inr - event.cost_basis_inr
+        )
         assert event.gain_type == "Short-term"  # 4 months holding period
         assert event.financial_year == "FY24-25"
 
+    def test_usd_gain_conversion_method(self, sample_sbi_rates, sample_stock_data):
+        calculator = RSUCalculator(
+            sample_sbi_rates,
+            sample_stock_data,
+            "usd-gain-conversion",
+        )
+        record = GLStatementRecord(
+            record_type="Sell",
+            symbol="ADBE",
+            quantity=50.0,
+            date_acquired=date(2024, 6, 15),
+            date_sold=date(2024, 10, 15),
+            total_proceeds=27500.0,
+            proceeds_per_share=550.0,
+            adjusted_cost_basis=26250.0,
+            adjusted_gain_loss=1250.0,
+            grant_number="RU123456",
+            order_number="12345678",
+        )
+
+        event = calculator.process_sale_events([record])[0]
+
+        assert event.calculation_method == "usd-gain-conversion"
+        assert event.exchange_rate_sale == 83.90
+        assert event.cost_basis_exchange_rate == 83.90
+        assert event.sale_proceeds_inr == 27500.0 * 83.90
+        assert event.cost_basis_inr == 26250.0 * 83.90
+        assert event.capital_gain_inr == 1250.0 * 83.90
+
     def test_sale_expense_is_allocated_and_deducted_once(self, rsu_calculator):
-        """A bank-supported selling fee reduces G&L gain using Rule 115."""
+        """A bank-supported selling fee uses the sale Rule 115 SBI TTBR."""
         common = {
             "sale_date": date(2024, 10, 15),
             "acquisition_date": date(2024, 6, 15),
@@ -235,22 +278,22 @@ class TestRSUCalculator:
         )
 
         assert [sale.sale_expense_usd for sale in sales] == [15.0, 10.0]
-        assert [sale.sale_expense_inr for sale in sales] == [1200.0, 800.0]
+        assert [sale.sale_expense_inr for sale in sales] == [1215.0, 810.0]
         assert [sale.capital_gain_usd for sale in sales] == [85.0, -60.0]
-        assert [sale.capital_gain_inr for sale in sales] == [6800.0, -4800.0]
+        assert [sale.capital_gain_inr for sale in sales] == [6785.0, -4810.0]
 
         # Reapplying the same source data must not deduct the expense twice.
         rsu_calculator.apply_sale_expenses(
             sales, {date(2024, 10, 15): 25.0}
         )
         assert [sale.capital_gain_usd for sale in sales] == [85.0, -60.0]
-        assert [sale.capital_gain_inr for sale in sales] == [6800.0, -4800.0]
+        assert [sale.capital_gain_inr for sale in sales] == [6785.0, -4810.0]
 
         summary = rsu_calculator.calculate_fy_summary("FY24-25", [], sales)
         assert summary.total_sale_expenses_usd == 25.0
-        assert summary.total_sale_expenses_inr == 2000.0
+        assert summary.total_sale_expenses_inr == 2025.0
         assert summary.total_capital_gains_usd == 25.0
-        assert summary.total_capital_gains_inr == 2000.0
+        assert summary.total_capital_gains_inr == 1975.0
 
     def test_calculate_fy_summary(self, rsu_calculator):
         """Test financial year summary calculation."""

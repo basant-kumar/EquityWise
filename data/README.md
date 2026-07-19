@@ -33,9 +33,9 @@ This directory contains all data files needed for RSU and Foreign Assets calcula
 **Publicly available data - safe to version control**
 
 #### 💱 `exchange_rates/`
-- **Purpose**: USD-INR exchange rates for accurate currency conversion
-- **Files**: `Exchange_Reference_Rates.csv`
-- **Source**: SBI TTBR rates, RBI rates, or other reliable financial data sources
+- **Purpose**: SBI USD/INR TT buying rates for tax currency conversion
+- **Files**: `SBI_REFERENCE_RATES_USD.csv`
+- **Source**: Archived SBI forex rate cards; see the folder README
 
 #### 📈 `adobe_stock/`
 - **Purpose**: Adobe (ADBE) historical stock prices

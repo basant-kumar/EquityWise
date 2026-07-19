@@ -138,6 +138,7 @@ class CSVReporter:
             ["", "Average Exchange Rate", f"₹{summary.average_exchange_rate:.4f}/USD", ""],
             ["", "", "", ""],
             ["Sales", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
+            ["", "Capital Gains Method", summary.capital_gains_calculation_method, ""],
             ["", "Gross Sale Proceeds", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
             ["", "Deductible Sale Expenses", f"${summary.total_sale_expenses_usd:,.2f}", f"₹{summary.total_sale_expenses_inr:,.2f}"],
             ["", "Total Capital Gains", f"${summary.total_capital_gains_usd:,.2f}", f"₹{summary.total_capital_gains_inr:,.2f}"],
@@ -194,7 +195,10 @@ class CSVReporter:
                 'Grant Number': event.grant_number,
                 'Shares Sold': f"{event.quantity_sold:.0f}",
                 'Sale Price (USD)': f"{event.sale_price_usd:.2f}",
-                'Rule 115 Exchange Rate': f"{(event.capital_gains_exchange_rate or event.exchange_rate_sale):.4f}",
+                'Sale Rule 115 SBI TTBR': f"{event.exchange_rate_sale:.4f}",
+                'Cost Basis Conversion Rate': f"{event.cost_basis_exchange_rate:.4f}",
+                'Acquisition SBI TTBR (Prior Month)': f"{event.acquisition_exchange_rate:.4f}",
+                'Capital Gains Calculation Method': event.calculation_method,
                 'Sale Proceeds (USD)': f"{event.sale_proceeds_usd:.2f}",
                 'Sale Proceeds (INR)': f"{event.sale_proceeds_inr:.2f}",
                 'Cost Basis (USD)': f"{event.cost_basis_usd:.2f}",
@@ -208,7 +212,6 @@ class CSVReporter:
                 'Holding Period (Days)': f"{event.holding_period_days}",
                 'Gain Type': event.gain_type,
                 'Financial Year': event.financial_year,
-                'Sale-Date Exchange Rate': f"{event.exchange_rate_sale:.4f}"
             })
         
         df = pd.DataFrame(sale_data)
@@ -246,7 +249,7 @@ class CSVReporter:
             recon_data.append({
                 'Sale Date': sale_date.strftime('%d/%m/%Y'),
                 'Expected USD': f"{total_usd:.2f}",
-                'Expected INR': f"{total_usd * events[0].exchange_rate_sale:.2f}",
+                'SBI TTBR Tax Reference INR': f"{total_usd * events[0].exchange_rate_sale:.2f}",
                 'Bank Received USD': f"{bank_match.get('bank_usd_amount', 0):.2f}" if bank_match else "Not Found",
                 'Bank Received INR': f"{bank_match.get('actual_received', 0):.2f}" if bank_match else "Not Found",
                 'Deductible Sale Expense (USD)': f"{bank_match.get('sale_expense_usd', 0):.2f}" if bank_match else "N/A",

@@ -304,7 +304,11 @@ class RSUService:
         rsu_records, gl_records, sbi_records, stock_records = self.load_all_data()
         
         # Initialize calculator
-        calculator = RSUCalculator(sbi_records, stock_records)
+        calculator = RSUCalculator(
+            sbi_records,
+            stock_records,
+            self.settings.capital_gains_calculation_method,
+        )
         
         # Process events
         self.console.print("🔄 Processing RSU transactions...")

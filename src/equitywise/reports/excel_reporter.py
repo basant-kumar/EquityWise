@@ -166,6 +166,7 @@ class ExcelReporter:
         sale_data = [
             ["", "Sale Details", "USD Amount", "INR Amount"],
             ["", "Total Sold Shares", f"{summary.total_sold_quantity:.0f} shares", ""],
+            ["", "Capital Gains Method", summary.capital_gains_calculation_method, ""],
             ["", "Total Purchase Amount", f"${summary.total_cost_basis_usd:,.2f}", f"₹{summary.total_cost_basis_inr:,.2f}"],
             ["", "Gross Sale Proceeds", f"${summary.total_sale_proceeds_usd:,.2f}", f"₹{summary.total_sale_proceeds_inr:,.2f}"],
             ["", "Deductible Sale Expenses", f"${summary.total_sale_expenses_usd:,.2f}", f"₹{summary.total_sale_expenses_inr:,.2f}"],
@@ -303,7 +304,8 @@ class ExcelReporter:
                 'Grant Number': event.grant_number,
                 'Shares Sold': event.quantity_sold,
                 'Sale Price (USD)': event.sale_price_usd,
-                'Rule 115 Exchange Rate': event.capital_gains_exchange_rate or event.exchange_rate_sale,
+                'Sale Rule 115 SBI TTBR': event.exchange_rate_sale,
+                'Cost Basis Conversion Rate': event.cost_basis_exchange_rate,
                 'Sale Proceeds (USD)': event.sale_proceeds_usd,
                 'Sale Proceeds (INR)': event.sale_proceeds_inr,
                 'Cost Basis (USD)': event.cost_basis_usd,
@@ -313,17 +315,18 @@ class ExcelReporter:
                 'Holding Period': f"{event.holding_period_days} days",
                 'Gain Type': event.gain_type,
                 'Financial Year': event.financial_year,
-                'Sale-Date Exchange Rate': event.exchange_rate_sale,
                 'Gross Capital Gain (USD)': event.gross_capital_gain_usd,
                 'Gross Capital Gain (INR)': event.gross_capital_gain_inr,
                 'Deductible Sale Expense (USD)': event.sale_expense_usd,
                 'Deductible Sale Expense (INR)': event.sale_expense_inr,
+                'Acquisition SBI TTBR (Prior Month)': event.acquisition_exchange_rate,
+                'Capital Gains Calculation Method': event.calculation_method,
             })
         
         df = pd.DataFrame(sale_data)
         
         # Add title
-        ws.merge_cells('A1:T1')
+        ws.merge_cells('A1:V1')
         title_cell = ws['A1']
         title_cell.value = "RSU Sale Events"
         title_cell.font = Font(bold=True, size=14, color="FFFFFF")
@@ -349,24 +352,26 @@ class ExcelReporter:
                         cell.number_format = '#,##0'
                     elif c_idx == 5:  # Sale Price (USD)
                         cell.number_format = '"$"#,##0.00'
-                    elif c_idx == 6:  # Exchange Rate
+                    elif c_idx in (6, 7):  # Sale and cost conversion rates
                         cell.number_format = '"₹"#,##0.0000'
-                    elif c_idx == 7:  # Sale Proceeds (USD)
+                    elif c_idx == 8:  # Sale Proceeds (USD)
                         cell.number_format = '"$"#,##0.00'
-                    elif c_idx == 8:  # Sale Proceeds (INR)
+                    elif c_idx == 9:  # Sale Proceeds (INR)
                         cell.number_format = '"₹"#,##0.00'
-                    elif c_idx == 9:  # Cost Basis (USD)
+                    elif c_idx == 10:  # Cost Basis (USD)
                         cell.number_format = '"$"#,##0.00'
-                    elif c_idx == 10:  # Cost Basis (INR)
+                    elif c_idx == 11:  # Cost Basis (INR)
                         cell.number_format = '"₹"#,##0.00'
-                    elif c_idx == 11:  # Capital Gain (USD)
+                    elif c_idx == 12:  # Net Capital Gain (USD)
                         cell.number_format = '"$"#,##0.00'
-                    elif c_idx == 12:  # Capital Gain (INR)
+                    elif c_idx == 13:  # Net Capital Gain (INR)
                         cell.number_format = '"₹"#,##0.00'
                     elif c_idx in (17, 19):
                         cell.number_format = '"$"#,##0.00'
                     elif c_idx in (18, 20):
                         cell.number_format = '"₹"#,##0.00'
+                    elif c_idx == 21:
+                        cell.number_format = '"₹"#,##0.0000'
                 
                 cell.border = self.border
             current_row = r_idx
@@ -380,58 +385,58 @@ class ExcelReporter:
             total_cell.font = Font(bold=True)
             total_cell.border = self.border
             
-            # Add dashes for columns 2-6 (Vest Date through Exchange Rate)
-            for col in range(2, 7):
+            # Add dashes for columns 2-7 (Vest Date through both FX rates)
+            for col in range(2, 8):
                 cell = ws.cell(row=total_row, column=col, value="-")
                 cell.font = Font(bold=True)
                 cell.border = self.border
                 cell.alignment = Alignment(horizontal="center")
             
             # Calculate and add totals for relevant columns
-            # Sale Proceeds (USD) - column 7
+            # Sale Proceeds (USD) - column 8
             total_proceeds_usd = sum(event.sale_proceeds_usd for event in sale_events)
-            proceeds_usd_cell = ws.cell(row=total_row, column=7, value=total_proceeds_usd)
+            proceeds_usd_cell = ws.cell(row=total_row, column=8, value=total_proceeds_usd)
             proceeds_usd_cell.font = Font(bold=True)
             proceeds_usd_cell.number_format = '"$"#,##0.00'
             proceeds_usd_cell.border = self.border
             
-            # Sale Proceeds (INR) - column 8
+            # Sale Proceeds (INR) - column 9
             total_proceeds_inr = sum(event.sale_proceeds_inr for event in sale_events)
-            proceeds_inr_cell = ws.cell(row=total_row, column=8, value=total_proceeds_inr)
+            proceeds_inr_cell = ws.cell(row=total_row, column=9, value=total_proceeds_inr)
             proceeds_inr_cell.font = Font(bold=True)
             proceeds_inr_cell.number_format = '"₹"#,##0.00'
             proceeds_inr_cell.border = self.border
             
-            # Cost Basis (USD) - column 9
+            # Cost Basis (USD) - column 10
             total_cost_usd = sum(event.cost_basis_usd for event in sale_events)
-            cost_usd_cell = ws.cell(row=total_row, column=9, value=total_cost_usd)
+            cost_usd_cell = ws.cell(row=total_row, column=10, value=total_cost_usd)
             cost_usd_cell.font = Font(bold=True)
             cost_usd_cell.number_format = '"$"#,##0.00'
             cost_usd_cell.border = self.border
             
-            # Cost Basis (INR) - column 10
+            # Cost Basis (INR) - column 11
             total_cost_inr = sum(event.cost_basis_inr for event in sale_events)
-            cost_inr_cell = ws.cell(row=total_row, column=10, value=total_cost_inr)
+            cost_inr_cell = ws.cell(row=total_row, column=11, value=total_cost_inr)
             cost_inr_cell.font = Font(bold=True)
             cost_inr_cell.number_format = '"₹"#,##0.00'
             cost_inr_cell.border = self.border
             
-            # Capital Gain (USD) - column 11
+            # Net Capital Gain (USD) - column 12
             total_gain_usd = sum(event.capital_gain_usd for event in sale_events)
-            gain_usd_cell = ws.cell(row=total_row, column=11, value=total_gain_usd)
+            gain_usd_cell = ws.cell(row=total_row, column=12, value=total_gain_usd)
             gain_usd_cell.font = Font(bold=True)
             gain_usd_cell.number_format = '"$"#,##0.00'
             gain_usd_cell.border = self.border
             
-            # Capital Gain (INR) - column 12
+            # Net Capital Gain (INR) - column 13
             total_gain_inr = sum(event.capital_gain_inr for event in sale_events)
-            gain_inr_cell = ws.cell(row=total_row, column=12, value=total_gain_inr)
+            gain_inr_cell = ws.cell(row=total_row, column=13, value=total_gain_inr)
             gain_inr_cell.font = Font(bold=True)
             gain_inr_cell.number_format = '"₹"#,##0.00'
             gain_inr_cell.border = self.border
             
             # Add dashes for non-total columns (holding/type/FY/sale-date rate).
-            for col in range(13, 17):
+            for col in range(14, 17):
                 cell = ws.cell(row=total_row, column=col, value="-")
                 cell.font = Font(bold=True)
                 cell.border = self.border
@@ -448,6 +453,12 @@ class ExcelReporter:
                 cell.font = Font(bold=True)
                 cell.number_format = '"$"#,##0.00' if col in (17, 19) else '"₹"#,##0.00'
                 cell.border = self.border
+
+            for col in (21, 22):
+                cell = ws.cell(row=total_row, column=col, value="-")
+                cell.font = Font(bold=True)
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="center")
         
         # Auto-adjust column widths with improved calculation
         self._auto_adjust_column_widths(ws, min_width=18, max_width=50)
@@ -485,7 +496,7 @@ class ExcelReporter:
             recon_data.append({
                 'Sale Date': sale_date.strftime('%d/%m/%Y'),
                 'Expected USD': f"${total_usd:.2f}",
-                'Expected INR': f"₹{expected_inr:.2f}",
+                'SBI TTBR Tax Reference INR': f"₹{expected_inr:.2f}",
                 'Bank Received USD': f"${bank_match.get('bank_usd_amount', 0):.2f}" if bank_match else "Not Found",
                 'Bank Received INR': f"₹{bank_received_inr:.2f}" if bank_match else "Not Found",
                 'Net Difference INR': f"₹{net_difference:.2f}" if bank_match else "N/A",

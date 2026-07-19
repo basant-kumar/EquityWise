@@ -8,18 +8,15 @@ This directory contains **publicly available market data** that's safe to versio
 **USD-INR Currency Exchange Rates**
 
 #### 📄 Files
-- **`Exchange_Reference_Rates.csv`** - Historical USD-INR exchange rates
+- **`SBI_REFERENCE_RATES_USD.csv`** - Historical SBI USD/INR TT buying rates
 
 #### 🔄 Data Sources
-- **SBI TTBR Rates** (recommended) - Reserve Bank of India reference rates
-- **RBI Reference Rates** - Official central bank rates  
-- **Commercial bank rates** - For specific transaction dates
+- **SBI TTBR archive** - SBI-published forex rate cards mirrored with PDF links
 
 #### 📊 CSV Format
 ```csv
-Date,Currency,Rate
-2024-01-01,USD,83.2500
-2024-01-02,USD,83.3200
+DATE,PDF FILE,TT BUY,TT SELL,BILL BUY,BILL SELL,...
+2025-04-30 13:59,https://github.com/.../2025-04-30.pdf,84.25,85.10,...
 ```
 
 #### 🔄 Update Frequency
@@ -82,23 +79,16 @@ Stock prices determine:
 Use the included update script to fetch missing data up to the current date:
 
 ```bash
-# One-time setup (if .venv doesn't exist yet)
-uv venv && uv pip install yfinance requests
-
-# Run the updater
-.venv/bin/python scripts/update_reference_data.py
+uv run python scripts/update_reference_data.py
 ```
 
-The script automatically:
-- Detects the last date in each CSV
-- Fetches only the missing data (no duplicates)
-- Prepends new rows while preserving the original file format
-- Uses **Yahoo Finance** for ADBE stock prices and **fawazahmed0/currency-api** for USD-INR rates
+The script updates ADBE prices from Yahoo Finance and refreshes the SBI TTBR
+archive. It never fills SBI gaps with generic market rates.
 
 ### 📊 **Data Quality**
 - **Date ranges**: Ensure coverage for all your RSU transaction periods
 - **Format consistency**: Maintained automatically by the update script
-- **Rate accuracy**: Uses reliable financial data sources (Yahoo Finance, open exchange rate APIs)
+- **Rate accuracy**: Uses Yahoo Finance stock data and archived SBI-published TT BUY cards
 
 ---
 
@@ -112,8 +102,8 @@ The script automatically:
 ### 🔍 **Data Validation**
 ```bash
 # Check date coverage
-head -5 exchange_rates/Exchange_Reference_Rates.csv
-tail -5 exchange_rates/Exchange_Reference_Rates.csv
+head -5 exchange_rates/SBI_REFERENCE_RATES_USD.csv
+tail -5 exchange_rates/SBI_REFERENCE_RATES_USD.csv
 
 # Verify stock data
 head -5 adobe_stock/HistoricalData_*.csv

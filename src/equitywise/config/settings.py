@@ -24,21 +24,12 @@ Key Configuration Categories:
    - log_level: Logging verbosity (INFO, DEBUG, ERROR)
    - excel_formatting: Enable Excel formatting and styling
 
-Environment Variable Overrides:
-- RSU_BENEFIT_HISTORY_PATH: Override benefit history file path
-- RSU_GL_STATEMENTS_PATHS: Override G&L statement paths (comma-separated)
-- RSU_OUTPUT_DIR: Override output directory
-- RSU_LOG_LEVEL: Override logging level
-
-Configuration File Support:
-Place settings.toml in config/ directory:
-    [data_paths]
-    benefit_history_path = "data/user_data/benefit_history/BenefitHistory.xlsx"
-    sbi_rates_path = "data/reference_data/exchange_rates/Exchange_Reference_Rates.csv"
-    
-    [calculation_settings]
-    fa_declaration_threshold_inr = 200000.0
-    fallback_days_exchange_rate = 7
+Environment Variable Overrides (also accepted from ``.env``):
+- RSU_FA_BENEFIT_HISTORY_PATH: Override benefit history file path
+- RSU_FA_GL_STATEMENTS_PATHS: Override G&L statement paths
+- RSU_FA_OUTPUT_DIR: Override output directory
+- RSU_FA_LOG_LEVEL: Override logging level
+- RSU_FA_CAPITAL_GAINS_CALCULATION_METHOD: Select the capital-gain formula
 
 Example Usage:
     from equitywise.config.settings import settings
@@ -49,16 +40,22 @@ Example Usage:
     
     # Override via environment
     import os
-    os.environ["RSU_LOG_LEVEL"] = "DEBUG"
+    os.environ["RSU_FA_LOG_LEVEL"] = "DEBUG"
 """
 
 from pathlib import Path
-from typing import Optional, List
+from typing import Literal, Optional, List
 import glob
 
 from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 from loguru import logger
+
+
+CapitalGainsCalculationMethod = Literal[
+    "inr-components",
+    "usd-gain-conversion",
+]
 
 
 class Settings(BaseSettings):
@@ -131,8 +128,10 @@ class Settings(BaseSettings):
     )
     
     sbi_ttbr_rates_path: Path = Field(
-        default=Path("data/reference_data/exchange_rates/Exchange_Reference_Rates.csv"),
-        description="Path to SBI TTBR rates CSV file"
+        default=Path(
+            "data/reference_data/exchange_rates/SBI_REFERENCE_RATES_USD.csv"
+        ),
+        description="Path to the SBI USD/INR TT buying-rate CSV file"
     )
     
     adobe_stock_data_path: Path = Field(
@@ -205,6 +204,18 @@ class Settings(BaseSettings):
     
     # Currency settings
     base_currency: str = Field(default="INR", description="Base currency for calculations")
+
+    capital_gains_calculation_method: CapitalGainsCalculationMethod = Field(
+        default="inr-components",
+        description=(
+            "Foreign-asset capital-gain conversion method. 'inr-components' "
+            "converts sale proceeds at the sale Rule 115 SBI TTBR and cost at "
+            "the acquisition Rule 115 SBI TTBR before subtracting. "
+            "'usd-gain-conversion' subtracts proceeds, cost, and selling "
+            "expense in USD first, then converts the net USD gain/loss at the "
+            "sale Rule 115 SBI TTBR."
+        ),
+    )
     
     # Bank statement parsing settings
     bank_remittance_patterns: dict = Field(

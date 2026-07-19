@@ -93,6 +93,8 @@ def test_help_recommends_the_single_combined_command():
     assert root_help.exit_code == 0
     assert "RECOMMENDED - ONE COMMAND FOR A FINANCIAL YEAR" in root_help.output
     assert "generate-reports --financial-year FY25-26" in root_help.output
+    assert "--capital-gains-method" in root_help.output
+    assert "inr-components|usd-gain-conversion" in root_help.output
 
     command_help = runner.invoke(cli, ["generate-reports", "--help"])
     assert command_help.exit_code == 0

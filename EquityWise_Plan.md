@@ -16,7 +16,7 @@ EquityWise is a comprehensive Python tool for calculating equity tax obligations
 - **G&L Statements**: 
   - `data/user_data/G&L_Expanded_2025.xlsx`
   - `data/user_data/G&L_Expanded_2024.xlsx`
-- **SBI TTBR Rates**: `data/reference_data/Exchange_Reference_Rates.csv`
+- **SBI TTBR Rates**: `data/reference_data/exchange_rates/SBI_REFERENCE_RATES_USD.csv`
 - **Adobe Stock Data**: `data/reference_data/HistoricalData_1756011612969.csv`
 
 ## Project Structure

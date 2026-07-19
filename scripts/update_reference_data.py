@@ -1,30 +1,28 @@
 #!/usr/bin/env python3
 """
-Fetch missing Adobe stock (ADBE) and USD-INR exchange rate data
-and prepend to the existing reference CSVs.
+Fetch Adobe stock (ADBE) data and the historical SBI USD TT buying-rate
+archive used by EquityWise.
 
 Usage:
-    python scripts/update_reference_data.py
+    uv run python scripts/update_reference_data.py
 """
 
 import csv
+import io
 import sys
-from datetime import datetime, date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 import requests
-import yfinance as yf
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STOCK_DIR = PROJECT_ROOT / "data" / "reference_data" / "adobe_stock"
 EXCHANGE_DIR = PROJECT_ROOT / "data" / "reference_data" / "exchange_rates"
-
-
-def detect_line_ending(file_path: Path) -> str:
-    raw = file_path.read_bytes()
-    if b"\r\n" in raw:
-        return "\r\n"
-    return "\n"
+SBI_TTBR_ARCHIVE_URL = (
+    "https://raw.githubusercontent.com/sahilgupta/sbi-fx-ratekeeper/"
+    "main/csv_files/SBI_REFERENCE_RATES_USD.csv"
+)
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/ADBE"
 
 
 def get_last_stock_date(stock_file: Path) -> date:
@@ -41,19 +39,61 @@ def get_last_stock_date(stock_file: Path) -> date:
     return latest
 
 
-def get_last_exchange_date(exchange_file: Path) -> date:
-    latest = date(2018, 1, 1)
-    with open(exchange_file, newline="") as f:
-        for line in f:
-            if "INR / 1 USD" in line:
-                parts = line.split(",")
-                try:
-                    d = datetime.strptime(parts[0].strip(), "%d %b %Y").date()
-                    if d > latest:
-                        latest = d
-                except ValueError:
-                    continue
-    return latest
+def fetch_adbe_prices(start_date: date, end_date: date) -> list[dict]:
+    """Fetch daily ADBE OHLCV data from Yahoo's chart endpoint."""
+    period_start = int(
+        datetime.combine(start_date, time.min, tzinfo=timezone.utc).timestamp()
+    )
+    period_end = int(
+        datetime.combine(
+            end_date + timedelta(days=1),
+            time.min,
+            tzinfo=timezone.utc,
+        ).timestamp()
+    )
+
+    try:
+        response = requests.get(
+            YAHOO_CHART_URL,
+            params={
+                "period1": period_start,
+                "period2": period_end,
+                "interval": "1d",
+                "events": "history",
+            },
+            headers={"User-Agent": "EquityWise/1.1"},
+            timeout=30,
+        )
+        response.raise_for_status()
+        chart = response.json()["chart"]
+        if chart.get("error"):
+            raise ValueError(chart["error"])
+        result = chart["result"][0]
+        timestamps = result.get("timestamp") or []
+        quote = result["indicators"]["quote"][0]
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError(f"Could not fetch ADBE stock data: {exc}") from exc
+
+    prices = []
+    for index, timestamp in enumerate(timestamps):
+        try:
+            values = {
+                "date": datetime.fromtimestamp(timestamp, tz=timezone.utc).date(),
+                "close": quote["close"][index],
+                "volume": quote["volume"][index],
+                "open": quote["open"][index],
+                "high": quote["high"][index],
+                "low": quote["low"][index],
+            }
+        except (KeyError, IndexError, TypeError):
+            continue
+        if any(value is None for value in values.values()):
+            continue
+        if not start_date <= values["date"] <= end_date:
+            continue
+        prices.append(values)
+
+    return prices
 
 
 def update_stock_data():
@@ -63,7 +103,6 @@ def update_stock_data():
         return False
 
     stock_file = csv_files[0]
-    eol = detect_line_ending(stock_file)
     last_date = get_last_stock_date(stock_file)
     start_date = last_date + timedelta(days=1)
     end_date = date.today()
@@ -73,23 +112,25 @@ def update_stock_data():
         return True
 
     print(f"Fetching ADBE stock data from {start_date} to {end_date}...")
-    ticker = yf.Ticker("ADBE")
-    df = ticker.history(start=start_date.isoformat(), end=(end_date + timedelta(days=1)).isoformat())
+    try:
+        prices = fetch_adbe_prices(start_date, end_date)
+    except RuntimeError as exc:
+        print(exc)
+        return False
 
-    if df.empty:
+    if not prices:
         print("No new stock data available from Yahoo Finance")
         return True
 
     new_lines = []
-    for idx, row in sorted(df.iterrows(), reverse=True):
-        d = idx.date() if hasattr(idx, "date") else idx
+    for row in sorted(prices, key=lambda item: item["date"], reverse=True):
         line = (
-            f"{d.strftime('%m/%d/%Y')},"
-            f"${row['Close']:.2f},"
-            f"{int(row['Volume'])},"
-            f"${row['Open']:.2f},"
-            f"${row['High']:.2f},"
-            f"${row['Low']:.2f}"
+            f"{row['date'].strftime('%m/%d/%Y')},"
+            f"${row['close']:.2f},"
+            f"{int(row['volume'])},"
+            f"${row['open']:.2f},"
+            f"${row['high']:.2f},"
+            f"${row['low']:.2f}"
         )
         new_lines.append(line)
 
@@ -98,7 +139,9 @@ def update_stock_data():
     header = original[:header_end]
     rest = original[header_end:]
 
-    new_block = eol.join(new_lines).encode() + eol.encode()
+    # Use LF for newly tracked rows so Git does not interpret CR characters as
+    # trailing whitespace in the historical CRLF-formatted source file.
+    new_block = "\n".join(new_lines).encode() + b"\n"
     stock_file.write_bytes(header + new_block + rest)
 
     print(f"Added {len(new_lines)} new stock records to {stock_file.name}")
@@ -106,76 +149,45 @@ def update_stock_data():
 
 
 def update_exchange_rates():
-    exchange_file = EXCHANGE_DIR / "Exchange_Reference_Rates.csv"
-    if not exchange_file.exists():
-        print("No existing exchange rate CSV found at", exchange_file)
+    """Refresh the SBI TTBR archive without substituting market/FBIL rates."""
+    exchange_file = EXCHANGE_DIR / "SBI_REFERENCE_RATES_USD.csv"
+    print("Fetching historical SBI USD TT buying rates...")
+
+    try:
+        response = requests.get(SBI_TTBR_ARCHIVE_URL, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"Could not fetch SBI TTBR data: {exc}")
         return False
 
-    eol = detect_line_ending(exchange_file)
-    last_date = get_last_exchange_date(exchange_file)
-    start_date = last_date + timedelta(days=1)
-    end_date = date.today()
+    try:
+        archive_text = response.content.decode("utf-8-sig")
+        archive_text = archive_text.replace("\r\n", "\n").replace("\r", "\n")
+        payload = archive_text.encode("utf-8")
+        rows = list(csv.DictReader(io.StringIO(archive_text)))
+        valid_rows = [
+            row for row in rows
+            if row.get("DATE") and float(row.get("TT BUY") or 0) > 0
+        ]
+    except (UnicodeDecodeError, ValueError) as exc:
+        print(f"Downloaded SBI TTBR archive is invalid: {exc}")
+        return False
 
-    if start_date > end_date:
-        print(f"Exchange rate data already up to date (last: {last_date})")
+    if not valid_rows or not {"DATE", "PDF FILE", "TT BUY"}.issubset(
+        rows[0].keys() if rows else set()
+    ):
+        print("Downloaded file does not have the expected SBI TTBR columns")
+        return False
+
+    EXCHANGE_DIR.mkdir(parents=True, exist_ok=True)
+    if exchange_file.exists() and exchange_file.read_bytes() == payload:
+        print(f"SBI TTBR data already up to date ({len(valid_rows)} usable rates)")
         return True
 
-    print(f"Fetching USD-INR exchange rates from {start_date} to {end_date}...")
-
-    new_rates = []
-    d = start_date
-    while d <= end_date:
-        if d.weekday() < 5:
-            try:
-                resp = requests.get(
-                    f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{d.isoformat()}/v1/currencies/usd.json",
-                    timeout=10,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    inr_rate = data.get("usd", {}).get("inr")
-                    if inr_rate:
-                        new_rates.append((d, round(inr_rate, 4)))
-            except Exception:
-                pass
-        d += timedelta(days=1)
-
-    if not new_rates:
-        print("Trying fallback API for exchange rates...")
-        try:
-            resp = requests.get("https://open.er-api.com/v6/latest/USD", timeout=10)
-            if resp.status_code == 200:
-                data = resp.json()
-                inr_rate = data.get("rates", {}).get("INR")
-                if inr_rate:
-                    d = start_date
-                    while d <= end_date:
-                        if d.weekday() < 5:
-                            new_rates.append((d, round(inr_rate, 4)))
-                        d += timedelta(days=1)
-        except Exception as e:
-            print(f"Fallback API also failed: {e}")
-
-    if not new_rates:
-        print("Could not fetch any exchange rate data")
-        return False
-
-    new_lines = []
-    for d, rate in sorted(new_rates, key=lambda x: x[0], reverse=True):
-        new_lines.append(f"{d.strftime('%d %b %Y')},1:30:00 PM,INR / 1 USD,{rate},")
-
-    original = exchange_file.read_bytes()
-    # Find the end of the 3rd line (after the 2 header lines + column header)
-    pos = 0
-    for _ in range(3):
-        pos = original.index(b"\n", pos) + 1
-    header = original[:pos]
-    rest = original[pos:]
-
-    new_block = eol.join(new_lines).encode() + eol.encode()
-    exchange_file.write_bytes(header + new_block + rest)
-
-    print(f"Added {len(new_rates)} new USD-INR exchange rate records to {exchange_file.name}")
+    temporary_file = exchange_file.with_suffix(".csv.tmp")
+    temporary_file.write_bytes(payload)
+    temporary_file.replace(exchange_file)
+    print(f"Updated {exchange_file.name} with {len(valid_rows)} usable SBI TTBR rates")
     return True
 
 
