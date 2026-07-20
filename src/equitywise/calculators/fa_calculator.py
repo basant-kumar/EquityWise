@@ -1267,14 +1267,25 @@ class FACalculator:
                 rsu_records, gl_records, calendar_year, benefit_records
             )
             
-            # Extract opening balance (Jan 1)
-            opening_key = f"{calendar_year}-01-01"
-            if opening_key in balance_calculations:
-                opening_data = balance_calculations[opening_key]
+            # Extract opening balance
+            # Prior to this fix the code looked up a hard-coded "{cy}-01-01" key,
+            # but calculate_year_balances stores the entry under the earliest
+            # vesting date for shares held during the year (see docstring). Use
+            # the first key by date so the summary reflects the actual opening
+            # position instead of ₹0.
+            opening_key = None
+            opening_data = None
+            for key in sorted(balance_calculations.keys()):
+                cand = balance_calculations[key]
+                cand_date = cand.get('date')
+                if cand_date is not None and cand_date.year <= int(calendar_year):
+                    opening_key = key
+                    opening_data = cand
+                    break
+            if opening_data:
                 summary.opening_balance_inr = opening_data['vested_value_inr']
                 summary.opening_exchange_rate = opening_data['exchange_rate']
                 summary.opening_stock_price = opening_data['stock_price']
-                # Calculate shares from USD value and stock price
                 if opening_data['stock_price'] > 0:
                     summary.opening_shares = opening_data['total_value_usd'] / opening_data['stock_price']
             

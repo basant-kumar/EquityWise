@@ -104,30 +104,43 @@ class BenefitHistoryLoader(DataLoader):
     ]
     
     def _load_file(self) -> pd.DataFrame:
-        """Load BenefitHistory Excel file."""
+        """Load BenefitHistory Excel file.
+
+        Newer E*Trade exports ship two sheets ('ESPP' and 'Restricted Stock')
+        while older ones were single-sheet. The RSU fields the calculator
+        needs (Vest Date, Vested Qty., Grant Number, etc.) live on the
+        Restricted Stock sheet, so prefer that when it exists.
+        """
         try:
-            # Suppress pandas warnings for cleaner output
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                df = pd.read_excel(self.file_path)
-            
-            logger.info(f"BenefitHistory file has {len(df)} rows and {len(df.columns)} columns")
+                xls = pd.ExcelFile(self.file_path)
+                target_sheet = 0
+                for name in xls.sheet_names:
+                    if name.strip().lower() in ("restricted stock", "restricted_stock", "rsu"):
+                        target_sheet = name
+                        break
+                df = pd.read_excel(xls, sheet_name=target_sheet)
+
+            logger.info(
+                f"BenefitHistory file has {len(df)} rows and {len(df.columns)} columns "
+                f"(sheet={target_sheet!r})"
+            )
             logger.debug(f"Columns: {list(df.columns)}")
 
             _require_expanded_columns(
                 df,
                 self.REQUIRED_EXPANDED_COLUMNS,
-                source_name="E*Trade Benefit History workbook",
+                source_name="E*Trade Benefit History workbook (Restricted Stock sheet)",
                 download_path=(
                     "E*Trade → At Work → My Account → Benefit History → "
                     "Download Expanded"
                 ),
                 expected_filename="BenefitHistory.xlsx",
             )
-            
+
             # Clean the data
             df = self._clean_benefit_history(df)
-            
             return df
         except Exception as e:
             logger.error(f"Failed to parse BenefitHistory.xlsx: {e}")

@@ -262,25 +262,37 @@ class Settings(BaseSettings):
         """Discover all supported RSU statements in ``rsu_documents_dir``.
 
         PDF, XLSX, XLS, and XLSM exports are accepted and returned in a stable
-        filename order. Excel temporary files are ignored.
+        filename order. Excel temporary files are ignored. When both a .pdf
+        and .xlsx exist for the same base name (e.g. RSU_FY-25-26.pdf and
+        RSU_FY-25-26.xlsx), the XLSX is preferred — it round-trips fractional
+        ESPP quantities without lossy PDF text extraction.
+
+        Returns:
+            List of Path objects for all statement files found, sorted by name
         """
         if not self.rsu_documents_dir.exists():
             logger.warning(f"RSU documents directory not found: {self.rsu_documents_dir}")
             return []
 
-        supported_extensions = {'.pdf', '.xlsx', '.xls', '.xlsm'}
-        statement_files = [
-            path for path in self.rsu_documents_dir.iterdir()
-            if path.is_file()
-            and path.suffix.lower() in supported_extensions
-            and not path.name.startswith('~$')
-        ]
+        # Prefer XLSX > XLS/XLSM > PDF when multiple exports share a base name.
+        pref_rank = {'.xlsx': 0, '.xls': 1, '.xlsm': 1, '.pdf': 2}
+        found: dict[str, Path] = {}
+        for f in self.rsu_documents_dir.iterdir():
+            if not f.is_file() or f.name.startswith('~$'):
+                continue  # skip Excel lock/temp files
+            suffix = f.suffix.lower()
+            if suffix not in pref_rank:
+                continue
+            key = f.stem.lower()  # e.g. "rsu_fy-25-26"
+            existing = found.get(key)
+            if existing is None or pref_rank[suffix] < pref_rank[existing.suffix.lower()]:
+                found[key] = f
 
         # Sort by filename for consistent processing order
-        statement_files.sort(key=lambda path: path.name.lower())
+        statement_files = sorted(found.values(), key=lambda path: path.name.lower())
 
         logger.info(
-            f"Discovered {len(statement_files)} RSU PDF/Excel files in "
+            f"Discovered {len(statement_files)} RSU statement files in "
             f"{self.rsu_documents_dir}"
         )
         for file in statement_files:
