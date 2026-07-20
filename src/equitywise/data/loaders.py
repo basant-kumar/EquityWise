@@ -19,6 +19,36 @@ from .models import (
 from .rsu_parser import RSUParser
 
 
+class UnsupportedExpandedExportError(ValueError):
+    """Raised when an E*Trade workbook lacks required Expanded-export columns."""
+
+
+def _require_expanded_columns(
+    df: pd.DataFrame,
+    required_columns: List[str],
+    *,
+    source_name: str,
+    download_path: str,
+    expected_filename: str,
+) -> None:
+    """Raise targeted user guidance only for a proven workbook schema mismatch."""
+    missing_columns = [
+        column for column in required_columns if column not in df.columns
+    ]
+    if not missing_columns:
+        return
+
+    missing_display = ", ".join(f"'{column}'" for column in missing_columns)
+    raise UnsupportedExpandedExportError(
+        f"{source_name} is missing required column(s): {missing_display}.\n"
+        "Possible fixes:\n"
+        f"  • Download a fresh Expanded workbook from {download_path}.\n"
+        "  • Do not use the collapsed or summary download.\n"
+        "  • Keep the original first-row column headers unchanged.\n"
+        f"  • Save the downloaded file as {expected_filename}."
+    )
+
+
 class DataLoader:
     """Base class for data loading utilities."""
     
@@ -65,6 +95,13 @@ class DataLoader:
 
 class BenefitHistoryLoader(DataLoader):
     """Loader for E*Trade BenefitHistory.xlsx file."""
+
+    REQUIRED_EXPANDED_COLUMNS = [
+        "Record Type",
+        "Symbol",
+        "Grant Date",
+        "Vest Date",
+    ]
     
     def _load_file(self) -> pd.DataFrame:
         """Load BenefitHistory Excel file."""
@@ -76,6 +113,17 @@ class BenefitHistoryLoader(DataLoader):
             
             logger.info(f"BenefitHistory file has {len(df)} rows and {len(df.columns)} columns")
             logger.debug(f"Columns: {list(df.columns)}")
+
+            _require_expanded_columns(
+                df,
+                self.REQUIRED_EXPANDED_COLUMNS,
+                source_name="E*Trade Benefit History workbook",
+                download_path=(
+                    "E*Trade → At Work → My Account → Benefit History → "
+                    "Download Expanded"
+                ),
+                expected_filename="BenefitHistory.xlsx",
+            )
             
             # Clean the data
             df = self._clean_benefit_history(df)
@@ -88,7 +136,7 @@ class BenefitHistoryLoader(DataLoader):
     def _clean_benefit_history(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and preprocess BenefitHistory data."""
         # Remove rows where all important columns are NaN
-        important_cols = ['Record Type', 'Symbol', 'Grant Date', 'Vest Date']
+        important_cols = self.REQUIRED_EXPANDED_COLUMNS
         
         # Keep rows that have at least one non-null value in important columns
         mask = df[important_cols].notna().any(axis=1)
@@ -153,6 +201,16 @@ class BenefitHistoryLoader(DataLoader):
 
 class GLStatementLoader(DataLoader):
     """Loader for G&L statement Excel files."""
+
+    REQUIRED_EXPANDED_COLUMNS = [
+        "Record Type",
+        "Quantity",
+        "Date Acquired",
+        "Adjusted Cost Basis",
+        "Date Sold",
+        "Total Proceeds",
+        "Grant Number",
+    ]
     
     def _load_file(self) -> pd.DataFrame:
         """Load G&L statement Excel file."""
@@ -163,6 +221,17 @@ class GLStatementLoader(DataLoader):
             
             logger.info(f"G&L statement file has {len(df)} rows and {len(df.columns)} columns")
             logger.debug(f"File: {self.file_path.name}")
+
+            _require_expanded_columns(
+                df,
+                self.REQUIRED_EXPANDED_COLUMNS,
+                source_name=f"E*Trade G&L workbook {self.file_path.name}",
+                download_path=(
+                    "E*Trade → At Work → My Account → Gains & Losses → "
+                    "select the calendar year → Download Expanded"
+                ),
+                expected_filename="G&L_Expanded_YYYY.xlsx",
+            )
             
             # Clean the data
             df = self._clean_gl_statement(df)
