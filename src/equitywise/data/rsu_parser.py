@@ -13,6 +13,8 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from loguru import logger
 
+from .excel_utils import select_sheet_by_name
+
 
 class RSUVestingRecord(BaseModel):
     """Model for RSU/ESPP equity data extracted from a statement."""
@@ -560,10 +562,33 @@ class RSUParser:
         ],
     }
 
+    def _sheet_has_equity_columns(self, columns: List[Any]) -> bool:
+        """True when a sheet's header can satisfy every ``_XLSX_COL_MAP`` field.
+
+        The ESPP/RSU workbook can ship multiple sheets and brokers reorder
+        them between exports, so we must never trust ``sheet_name=0``. A sheet
+        matches only if each mapped field resolves to one of its (aliased,
+        case-insensitive) columns -- the same lookup ``find()`` performs below,
+        which guarantees the chosen sheet actually parses.
+        """
+        col_by_lc = {str(c).strip().lower(): c for c in columns}
+        return all(
+            any(candidate in col_by_lc for candidate in candidates)
+            for candidates in self._XLSX_COL_MAP.values()
+        )
+
     def _extract_from_xlsx(self) -> List[RSUVestingRecord]:
         logger.info(f"Parsing RSU/ESPP XLSX: {self.pdf_path}")
 
-        df = pd.read_excel(self.pdf_path)
+        with pd.ExcelFile(self.pdf_path) as xls:
+            target_sheet = select_sheet_by_name(
+                xls,
+                preferred_names=["espp", "rsu", "espp/rsu", "rsu/espp"],
+                header_matcher=self._sheet_has_equity_columns,
+            )
+            logger.debug(f"Selected RSU/ESPP sheet: {target_sheet!r}")
+            df = pd.read_excel(xls, sheet_name=target_sheet)
+
         df.columns = [str(c).strip() for c in df.columns]
         col_by_lc = {c.lower(): c for c in df.columns}
 
