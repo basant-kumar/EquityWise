@@ -10,12 +10,22 @@ from equitywise.data.loaders import (
 )
 
 
+class _FakeExcelFile:
+    """Stand-in for pd.ExcelFile so tests never touch the filesystem."""
+
+    sheet_names = ["Restricted Stock"]
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+
 def test_benefit_history_missing_column_shows_expanded_download_guidance(
     monkeypatch,
 ):
     collapsed = pd.DataFrame(
         columns=["Record Type", "Symbol", "Grant Date"]
     )
+    monkeypatch.setattr(pd, "ExcelFile", _FakeExcelFile)
     monkeypatch.setattr(pd, "read_excel", lambda *args, **kwargs: collapsed)
 
     with pytest.raises(UnsupportedExpandedExportError) as exc_info:
@@ -49,6 +59,7 @@ def test_unrelated_excel_error_does_not_show_download_guidance(monkeypatch):
     def fail_to_open(*args, **kwargs):
         raise PermissionError("workbook is locked")
 
+    monkeypatch.setattr(pd, "ExcelFile", fail_to_open)
     monkeypatch.setattr(pd, "read_excel", fail_to_open)
 
     with pytest.raises(PermissionError) as exc_info:
