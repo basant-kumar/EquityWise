@@ -483,7 +483,18 @@ class RSUParser:
         if extension == '.pdf':
             return self._extract_pdf_vesting_data()
         if extension in self.EXCEL_EXTENSIONS:
-            return self._extract_excel_vesting_data()
+            try:
+                # Preferred: structured column-based extraction where every row
+                # is validated through the RSUVestingRecord pydantic model.
+                return self._extract_from_xlsx()
+            except ValueError as e:
+                # Sheet doesn't match the known Excelity column layout —
+                # fall back to legacy text-line parsing.
+                logger.warning(
+                    f"Structured XLSX parsing not possible ({e}); "
+                    f"falling back to line-based parsing"
+                )
+                return self._extract_excel_vesting_data()
 
         supported = ', '.join(sorted(self.SUPPORTED_EXTENSIONS))
         raise ValueError(
