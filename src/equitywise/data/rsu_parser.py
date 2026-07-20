@@ -13,6 +13,8 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from loguru import logger
 
+from .excel_utils import select_sheet_by_name
+
 
 class RSUVestingRecord(BaseModel):
     """Model for RSU/ESPP equity data extracted from a statement."""
@@ -20,13 +22,13 @@ class RSUVestingRecord(BaseModel):
     employee_name: Optional[str] = None
     grant_number: str
     grant_type: str = "RSU"  # RSU or ESPP
-    quantity: int
+    quantity: float
     vesting_date: Date  # For ESPP, this is the purchase date
     fmv_usd: float = Field(description="Fair Market Value per share in USD")
     total_usd: float = Field(description="Total value in USD (vesting for RSU, purchase for ESPP)")
     forex_rate: float = Field(description="USD to INR exchange rate")
     total_inr: float = Field(description="Total value in INR")
-    wh_quantity: int = Field(default=0, description="Withholding quantity")
+    wh_quantity: float = Field(default=0.0, description="Withholding quantity")
     wh_fmv_usd: float = Field(default=0.0, description="Withholding FMV USD")
     wh_total_inr: float = Field(default=0.0, description="Withholding total INR")
     grant_price_usd: Optional[float] = Field(default=None, description="Grant/purchase price per share (for ESPP)")
@@ -50,10 +52,10 @@ class RSUVestingRecord(BaseModel):
     @field_validator('quantity', 'wh_quantity', mode='before')
     @classmethod
     def parse_quantity(cls, v):
-        """Parse quantity, handling potential string values"""
+        """Parse quantity as float so ESPP fractional purchases (e.g. 19.15) survive."""
         if isinstance(v, str):
-            return int(float(v.replace(',', '')))
-        return int(v)
+            return float(v.replace(',', ''))
+        return float(v)
 
     @field_validator('fmv_usd', 'total_usd', 'forex_rate', 'total_inr', 'wh_fmv_usd', 'wh_total_inr', mode='before')
     @classmethod
@@ -247,7 +249,7 @@ class RSUParser:
                     # Try to parse as float first, then convert to int
                     float_val = float(candidate.replace(',', '').replace('$', '').replace('₹', ''))
                     if float_val > 0:  # Skip zero values
-                        quantity = int(float_val)
+                        quantity = float_val
                         break
                 except (ValueError, AttributeError):
                     continue
@@ -312,7 +314,9 @@ class RSUParser:
             if base_idx >= len(parts):
                 logger.debug(f"Missing withholding quantity in RSU line")
                 return None
-            wh_quantity = int(float(parts[base_idx].replace(',', '')))
+            # Keep fractional quantities (ESPP can withhold partial shares),
+            # but still tolerate thousands separators from PDF text.
+            wh_quantity = float(parts[base_idx].replace(',', ''))
             base_idx += 1
             
             # Get withholding FMV USD
@@ -481,7 +485,18 @@ class RSUParser:
         if extension == '.pdf':
             return self._extract_pdf_vesting_data()
         if extension in self.EXCEL_EXTENSIONS:
-            return self._extract_excel_vesting_data()
+            try:
+                # Preferred: structured column-based extraction where every row
+                # is validated through the RSUVestingRecord pydantic model.
+                return self._extract_from_xlsx()
+            except ValueError as e:
+                # Sheet doesn't match the known Excelity column layout —
+                # fall back to legacy text-line parsing.
+                logger.warning(
+                    f"Structured XLSX parsing not possible ({e}); "
+                    f"falling back to line-based parsing"
+                )
+                return self._extract_excel_vesting_data()
 
         supported = ', '.join(sorted(self.SUPPORTED_EXTENSIONS))
         raise ValueError(
@@ -519,6 +534,127 @@ class RSUParser:
         else:
             logger.info(f"✅ Parsing validation passed: {parsed_count}/{expected_count} entries parsed successfully")
     
+    # ------------------------------------------------------------------
+    # XLSX / XLS input path
+    # ------------------------------------------------------------------
+    # Column layout mirrors Excelity's Stock Perquisites Statement:
+    #   Type of Plan | Grant Number/Plan Number | Grant Price in USD $ |
+    #   Quantity | Excercise Date(For ESOP Only) | Vesting/Purchase Date |
+    #   FMV in USD $ | Total Perquisites in USD $ | Forex rates in USD $ |
+    #   Total Perquisites in INR | Equity WH (QTY) | FMV (WH) |
+    #   Forex Rate (WH) | WH Perquisites in USD | Perq on Equity WH in (INR) |
+    #   Total Perquisites on form 16 (INR)
+    _XLSX_COL_MAP = {
+        "type_of_plan": ["type of plan", "plan type"],
+        "grant_number": ["grant number/plan number", "grant number", "plan number"],
+        "grant_price": ["grant price in usd $", "grant price in usd", "grant price"],
+        "quantity": ["quantity", "qty"],
+        "vesting_date": ["vesting/purchase date", "vesting date", "purchase date"],
+        "fmv_usd": ["fmv in usd $", "fmv in usd", "fmv"],
+        "total_usd": ["total perquisites in usd $", "total perquisites in usd"],
+        "forex_rate": ["forex rates in usd $", "forex rate", "forex rates"],
+        "total_inr": ["total perquisites in inr"],
+        "wh_quantity": ["equity wh (qty)", "wh qty", "equity wh qty"],
+        "wh_fmv_usd": ["fmv (wh)", "wh fmv"],
+        "wh_total_inr": [
+            "perq on equity wh in (inr)",
+            "perq on equity wh in inr",
+        ],
+    }
+
+    def _sheet_has_equity_columns(self, columns: List[Any]) -> bool:
+        """True when a sheet's header can satisfy every ``_XLSX_COL_MAP`` field.
+
+        The ESPP/RSU workbook can ship multiple sheets and brokers reorder
+        them between exports, so we must never trust ``sheet_name=0``. A sheet
+        matches only if each mapped field resolves to one of its (aliased,
+        case-insensitive) columns -- the same lookup ``find()`` performs below,
+        which guarantees the chosen sheet actually parses.
+        """
+        col_by_lc = {str(c).strip().lower(): c for c in columns}
+        return all(
+            any(candidate in col_by_lc for candidate in candidates)
+            for candidates in self._XLSX_COL_MAP.values()
+        )
+
+    def _extract_from_xlsx(self) -> List[RSUVestingRecord]:
+        logger.info(f"Parsing RSU/ESPP XLSX: {self.pdf_path}")
+
+        with pd.ExcelFile(self.pdf_path) as xls:
+            target_sheet = select_sheet_by_name(
+                xls,
+                preferred_names=["espp", "rsu", "espp/rsu", "rsu/espp"],
+                header_matcher=self._sheet_has_equity_columns,
+            )
+            logger.debug(f"Selected RSU/ESPP sheet: {target_sheet!r}")
+            df = pd.read_excel(xls, sheet_name=target_sheet)
+
+        df.columns = [str(c).strip() for c in df.columns]
+        col_by_lc = {c.lower(): c for c in df.columns}
+
+        def find(field: str) -> str:
+            for candidate in self._XLSX_COL_MAP[field]:
+                if candidate in col_by_lc:
+                    return col_by_lc[candidate]
+            raise ValueError(
+                f"RSU XLSX {self.pdf_path.name} is missing expected column for '{field}'. "
+                f"Looked for any of: {self._XLSX_COL_MAP[field]}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
+        cols = {field: find(field) for field in self._XLSX_COL_MAP}
+
+        def as_float(v) -> float:
+            if pd.isna(v):
+                return 0.0
+            if isinstance(v, str):
+                return float(v.replace("$", "").replace(",", "").strip() or 0)
+            return float(v)
+
+        records: List[RSUVestingRecord] = []
+        for idx, row in df.iterrows():
+            plan_type = str(row[cols["type_of_plan"]]).strip().upper()
+            if plan_type not in ("RSU", "ESPP"):
+                logger.debug(f"Skipping row {idx}: unknown plan type {plan_type!r}")
+                continue
+
+            try:
+                quantity = as_float(row[cols["quantity"]])
+                total_inr = as_float(row[cols["total_inr"]])
+                wh_quantity = as_float(row[cols["wh_quantity"]])
+                wh_total_inr = as_float(row[cols["wh_total_inr"]])
+                if wh_total_inr == 0.0 and wh_quantity > 0 and quantity > 0:
+                    # Preserve the PDF-path's fallback: pro-rate main total INR
+                    wh_total_inr = total_inr * (wh_quantity / quantity)
+
+                record = RSUVestingRecord(
+                    employee_id=self.employee_info.get("employee_id", "000000"),
+                    employee_name=self.employee_info.get("employee_name", "Adobe Employee"),
+                    grant_number=str(row[cols["grant_number"]]).strip(),
+                    grant_type=plan_type,
+                    quantity=quantity,
+                    vesting_date=pd.to_datetime(row[cols["vesting_date"]]).date(),
+                    fmv_usd=as_float(row[cols["fmv_usd"]]),
+                    total_usd=as_float(row[cols["total_usd"]]),
+                    forex_rate=as_float(row[cols["forex_rate"]]),
+                    total_inr=total_inr,
+                    wh_quantity=wh_quantity,
+                    wh_fmv_usd=as_float(row[cols["wh_fmv_usd"]]),
+                    wh_total_inr=wh_total_inr,
+                    grant_price_usd=as_float(row[cols["grant_price"]]) if plan_type == "ESPP" else None,
+                )
+                records.append(record)
+                logger.debug(
+                    f"Parsed {plan_type}: {record.grant_number} - "
+                    f"{record.quantity} shares on {record.vesting_date}"
+                )
+            except Exception as e:
+                logger.warning(f"Row {idx} in {self.pdf_path.name}: could not parse — {e}")
+                continue
+
+        logger.info(f"Successfully parsed {len(records)} equity records from XLSX")
+        return records
+
     def to_dataframe(self) -> pd.DataFrame:
         """Convert extracted vesting data to pandas DataFrame"""
         records = self.extract_vesting_data()
@@ -531,8 +667,8 @@ class RSUParser:
         
         # Ensure proper data types
         df['vesting_date'] = pd.to_datetime(df['vesting_date']).dt.date
-        df['quantity'] = df['quantity'].astype(int)
-        df['wh_quantity'] = df['wh_quantity'].astype(int)
+        df['quantity'] = df['quantity'].astype(float)
+        df['wh_quantity'] = df['wh_quantity'].astype(float)
         
         # Round financial columns
         financial_cols = ['fmv_usd', 'total_usd', 'forex_rate', 'total_inr', 'wh_fmv_usd', 'wh_total_inr']
