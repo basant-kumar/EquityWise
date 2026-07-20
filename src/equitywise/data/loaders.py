@@ -49,6 +49,43 @@ def _require_expanded_columns(
     )
 
 
+def _select_sheet_by_name(
+    xls: pd.ExcelFile,
+    preferred_names: List[str],
+    required_columns: Optional[List[str]] = None,
+) -> str:
+    """Pick a worksheet by name, never by positional index.
+
+    E*Trade (and other brokers) occasionally reorder or add sheets between
+    exports -- e.g. BenefitHistory.xlsx shipping an 'ESPP' sheet before
+    'Restricted Stock' -- so blindly reading ``sheet_name=0`` can silently
+    load the wrong tab and fail downstream column checks. This resolves the
+    sheet in three passes, each still keyed off the sheet *name*:
+
+    1. Exact (case-insensitive) match against ``preferred_names``.
+    2. If ``required_columns`` is given, scan each sheet's header row and
+       pick the first one containing all of them.
+    3. Fall back to the first sheet name in the workbook
+       (``xls.sheet_names[0]``) -- still a name lookup, just the first one,
+       used only when neither heuristic above finds a match.
+    """
+    normalized_preferred = {name.strip().lower() for name in preferred_names}
+    for name in xls.sheet_names:
+        if name.strip().lower() in normalized_preferred:
+            return name
+
+    if required_columns:
+        for name in xls.sheet_names:
+            try:
+                header = pd.read_excel(xls, sheet_name=name, nrows=0)
+            except Exception:
+                continue
+            if set(required_columns).issubset(set(header.columns)):
+                return name
+
+    return xls.sheet_names[0]
+
+
 class DataLoader:
     """Base class for data loading utilities."""
     
@@ -115,11 +152,11 @@ class BenefitHistoryLoader(DataLoader):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 xls = pd.ExcelFile(self.file_path)
-                target_sheet = 0
-                for name in xls.sheet_names:
-                    if name.strip().lower() in ("restricted stock", "restricted_stock", "rsu"):
-                        target_sheet = name
-                        break
+                target_sheet = _select_sheet_by_name(
+                    xls,
+                    preferred_names=["restricted stock", "restricted_stock", "rsu"],
+                    required_columns=self.REQUIRED_EXPANDED_COLUMNS,
+                )
                 df = pd.read_excel(xls, sheet_name=target_sheet)
 
             logger.info(
@@ -230,9 +267,18 @@ class GLStatementLoader(DataLoader):
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                df = pd.read_excel(self.file_path)
-            
-            logger.info(f"G&L statement file has {len(df)} rows and {len(df.columns)} columns")
+                xls = pd.ExcelFile(self.file_path)
+                target_sheet = _select_sheet_by_name(
+                    xls,
+                    preferred_names=["g&l_expanded", "gl_expanded", "g&l", "gl"],
+                    required_columns=self.REQUIRED_EXPANDED_COLUMNS,
+                )
+                df = pd.read_excel(xls, sheet_name=target_sheet)
+
+            logger.info(
+                f"G&L statement file has {len(df)} rows and {len(df.columns)} columns "
+                f"(sheet={target_sheet!r})"
+            )
             logger.debug(f"File: {self.file_path.name}")
 
             _require_expanded_columns(

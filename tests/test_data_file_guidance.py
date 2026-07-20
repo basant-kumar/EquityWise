@@ -42,6 +42,7 @@ def test_gl_missing_columns_shows_expanded_download_guidance(monkeypatch):
     collapsed = pd.DataFrame(
         columns=["Record Type", "Quantity", "Date Sold", "Total Proceeds"]
     )
+    monkeypatch.setattr(pd, "ExcelFile", _FakeExcelFile)
     monkeypatch.setattr(pd, "read_excel", lambda *args, **kwargs: collapsed)
 
     with pytest.raises(UnsupportedExpandedExportError) as exc_info:
